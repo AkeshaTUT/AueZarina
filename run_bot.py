@@ -43,7 +43,7 @@ def main():
         return 1
     
     try:
-        logger.info("🚀 Запуск Steam Discount Bot на Replit...")
+        logger.info("🚀 Запуск ZarinAI на Replit...")
         bot = SteamDiscountBot(token)
         bot.run()
     except KeyboardInterrupt:

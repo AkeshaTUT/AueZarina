@@ -155,7 +155,7 @@ class SteamDiscountBot:
         self.db.add_user(user.id, user.username, user.first_name, user.last_name)
         
         welcome_message = """
-🎮 Добро пожаловать в Steam Discount Bot! 
+🎮 Добро пожаловать в ZarinAI! 
 
 Этот бот поможет вам находить лучшие скидки на игры в Steam от 30% до 100%!
 

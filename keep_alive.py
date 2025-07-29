@@ -10,14 +10,14 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
-            self.wfile.write("<h1>🤖 Steam Discount Bot is running!</h1>".encode('utf-8'))
+            self.wfile.write("<h1>🤖 ZarinAI is running!</h1>".encode('utf-8'))
         elif self.path == '/health':
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             health_data = {
                 "status": "healthy",
-                "bot": "Steam Discount Bot",
+                "bot": "ZarinAI",
                 "timestamp": time.time()
             }
             self.wfile.write(json.dumps(health_data).encode())
