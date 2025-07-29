@@ -24,13 +24,31 @@
 
 ## 🚀 Автоматический деплой
 
-### Подключитесь к VM и выполните:
+### Для Debian (Google Cloud VM по умолчанию):
 
 ```bash
-# Скачивание и запуск скрипта деплоя
-wget https://raw.githubusercontent.com/AkeshaTUT/AueZarina/main/gcp_deploy.sh
-chmod +x gcp_deploy.sh
-sudo ./gcp_deploy.sh
+# Скачивание и запуск специального скрипта для Debian
+wget https://raw.githubusercontent.com/AkeshaTUT/AueZarina/main/debian_install.sh
+chmod +x debian_install.sh
+sudo ./debian_install.sh
+```
+
+### Для Ubuntu:
+
+```bash
+# Скачивание и запуск универсального скрипта
+wget https://raw.githubusercontent.com/AkeshaTUT/AueZarina/main/quick_install.sh
+chmod +x quick_install.sh
+sudo ./quick_install.sh
+```
+
+### Мануальная установка (пошагово):
+
+```bash
+# Если автоматические скрипты не работают
+wget https://raw.githubusercontent.com/AkeshaTUT/AueZarina/main/manual_install.sh
+chmod +x manual_install.sh
+sudo ./manual_install.sh
 ```
 
 ## ⚙️ Настройка токенов

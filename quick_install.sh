@@ -42,10 +42,41 @@ print_status "Обновление системных пакетов..."
 sudo apt update && sudo apt upgrade -y
 
 print_status "Установка Python 3.11 и зависимостей..."
-sudo apt install -y software-properties-common
-sudo add-apt-repository -y ppa:deadsnakes/ppa
-sudo apt update
-sudo apt install -y python3.11 python3.11-pip python3.11-venv python3.11-dev
+
+# Проверка операционной системы
+if [ -f /etc/debian_version ]; then
+    # Debian/Ubuntu detection
+    if grep -q "Ubuntu" /etc/os-release; then
+        # Ubuntu - используем PPA
+        sudo add-apt-repository -y ppa:deadsnakes/ppa
+        sudo apt update
+        sudo apt install -y python3.11 python3.11-pip python3.11-venv python3.11-dev
+    else
+        # Debian - используем стандартные репозитории или компилируем
+        print_warning "Обнаружен Debian. Попытка установки Python 3.11 из стандартных репозиториев..."
+        
+        # Проверяем доступность Python 3.11 в репозиториях
+        if apt-cache search python3.11 | grep -q "python3.11"; then
+            sudo apt install -y python3.11 python3.11-pip python3.11-venv python3.11-dev
+        else
+            # Используем Python 3.9/3.10/3.11 который доступен
+            print_warning "Python 3.11 недоступен. Используем доступную версию Python 3..."
+            sudo apt install -y python3 python3-pip python3-venv python3-dev
+            
+            # Создаем симлинк для совместимости
+            if ! command -v python3.11 &> /dev/null; then
+                PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
+                print_status "Используется Python $PYTHON_VERSION"
+                sudo ln -sf /usr/bin/python3 /usr/bin/python3.11 || true
+            fi
+        fi
+    fi
+else
+    # Другие системы
+    print_error "Неподдерживаемая операционная система"
+    exit 1
+fi
+
 sudo apt install -y git curl wget nano htop screen supervisor nginx
 
 print_status "Создание пользователя zarinai..."
@@ -63,7 +94,19 @@ else
 fi
 
 print_status "Создание виртуального окружения..."
-sudo -u zarinai python3.11 -m venv venv
+# Определяем доступную версию Python
+if command -v python3.11 &> /dev/null; then
+    PYTHON_CMD="python3.11"
+elif command -v python3.10 &> /dev/null; then
+    PYTHON_CMD="python3.10"
+elif command -v python3.9 &> /dev/null; then
+    PYTHON_CMD="python3.9"
+else
+    PYTHON_CMD="python3"
+fi
+
+print_status "Используется $PYTHON_CMD"
+sudo -u zarinai $PYTHON_CMD -m venv venv
 sudo -u zarinai ./venv/bin/pip install --upgrade pip
 
 print_status "Установка Python зависимостей..."
