@@ -66,7 +66,7 @@ def main():
             logger.info("🌐 Веб-сервер запущен на порту 8080")
         
         # Создание и запуск бота
-        bot = SteamDiscountBot()
+        bot = SteamDiscountBot(bot_token)
         logger.info("🤖 ZarinAI готов к работе!")
         bot.run()
         
