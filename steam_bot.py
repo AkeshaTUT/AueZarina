@@ -51,6 +51,7 @@ class SteamDiscountBot:
         self.application.add_handler(CommandHandler("discount", self.discount_settings_command))
         self.application.add_handler(CommandHandler("settings", self.user_settings_command))
         self.application.add_handler(CommandHandler("weeklydigest", self.weeklydigest_command))
+        self.application.add_handler(CommandHandler("feedback", self.feedback_command))
         
         # Новые функции
         self.application.add_handler(CommandHandler("wishlist", self.wishlist_command))
@@ -213,6 +214,9 @@ class SteamDiscountBot:
 
 🤖 /recommend или /rekomend - ИИ-рекомендации игр на основе Wishlist и библиотеки
    Проанализирует ваш Steam Wishlist и библиотеку игр для персональных рекомендаций
+
+💬 /feedback - Отправить отзыв, сообщить о баге или предложить идею
+   Поможет сделать бота лучше!
 
 <b>🤖 Автоматические функции:</b>
 📊 Бот ищет скидки от 30% до 100% в Steam Store
@@ -453,6 +457,8 @@ class SteamDiscountBot:
             await self.handle_genre_callback(query, user_id, data)
         elif data.startswith("discount_"):
             await self.handle_discount_callback(query, user_id, data)
+        elif data.startswith("feedback_"):
+            await self.handle_feedback_callback(query, user_id, data)
     
     async def handle_genre_callback(self, query, user_id: int, data: str):
         """Обработка callback для жанров"""
@@ -523,6 +529,70 @@ class SteamDiscountBot:
             f"✅ <b>Настройка сохранена!</b>\n\n💰 Минимальная скидка установлена: <b>{discount_value}%</b>\n\nТеперь в рассылке будут только игры со скидкой от {discount_value}% и выше.",
             parse_mode='HTML'
         )
+
+    async def handle_feedback_callback(self, query, user_id: int, data: str):
+        """Обработка callback для отзывов"""
+        user = query.from_user
+        username = user.username or user.first_name or str(user_id)
+        
+        if data == "feedback_bug":
+            # Устанавливаем состояние ожидания сообщения о баге
+            self.set_user_state(user_id, "waiting_bug_report")
+            await query.edit_message_text(
+                "🐛 **Сообщить о баге**\n\n"
+                "Опишите проблему как можно подробнее:\n"
+                "• Что вы делали?\n"
+                "• Что произошло?\n"
+                "• Что ожидали увидеть?\n\n"
+                "_Отправьте ваше сообщение в следующем сообщении:_",
+                parse_mode='Markdown'
+            )
+            
+        elif data == "feedback_feature":
+            # Устанавливаем состояние ожидания предложения
+            self.set_user_state(user_id, "waiting_feature_request")
+            await query.edit_message_text(
+                "💡 **Предложить идею**\n\n"
+                "Опишите ваше предложение:\n"
+                "• Какую функцию хотите добавить?\n"
+                "• Как она должна работать?\n"
+                "• Зачем она нужна?\n\n"
+                "_Отправьте ваше предложение в следующем сообщении:_",
+                parse_mode='Markdown'
+            )
+            
+        elif data == "feedback_review":
+            # Устанавливаем состояние ожидания отзыва
+            self.set_user_state(user_id, "waiting_review")
+            await query.edit_message_text(
+                "❤️ **Оставить отзыв**\n\n"
+                "Поделитесь своими впечатлениями о боте:\n"
+                "• Что вам нравится?\n"
+                "• Что можно улучшить?\n"
+                "• Оцените бота от 1 до 5 звезд\n\n"
+                "_Отправьте ваш отзыв в следующем сообщении:_",
+                parse_mode='Markdown'
+            )
+            
+        elif data == "feedback_stats":
+            # Показываем статистику отзывов
+            stats = self.db.get_feedback_stats()
+            if stats.get('total', 0) > 0:
+                message = (
+                    f"📊 **Статистика отзывов**\n\n"
+                    f"📝 Всего сообщений: **{stats['total']}**\n"
+                    f"🐛 Багов: **{stats['bugs']}**\n"
+                    f"💡 Идей: **{stats['features']}**\n"
+                    f"❤️ Отзывов: **{stats['compliments']}**\n"
+                    f"✅ Решено: **{stats['resolved']}**\n"
+                )
+                if stats.get('avg_rating', 0) > 0:
+                    rating_stars = "⭐" * int(stats['avg_rating'])
+                    message += f"⭐ Средняя оценка: **{stats['avg_rating']}/5** {rating_stars}"
+            else:
+                message = "📊 **Статистика отзывов**\n\nПока что отзывов нет. Станьте первым!"
+                
+            await query.edit_message_text(message, parse_mode='Markdown')
     
     async def deals_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /deals"""
@@ -1252,10 +1322,226 @@ Steam → Профиль → Редактировать профиль → На�
                 
                 await self._process_ai_recommendations(update, favorite_games)
                 
+            elif state == 'waiting_bug_report':
+                # Пользователь отправил сообщение о баге
+                await self._process_bug_report(update, message_text)
+                
+            elif state == 'waiting_feature_request':
+                # Пользователь отправил предложение
+                await self._process_feature_request(update, message_text)
+                
+            elif state == 'waiting_review':
+                # Пользователь отправил отзыв
+                await self._process_user_review(update, message_text)
+                
         except Exception as e:
             logger.error(f"Error handling text message: {e}")
             self.clear_user_state(user_id)
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте команду заново.")
+
+    async def feedback_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда для отправки отзывов и предложений"""
+        try:
+            user = update.effective_user
+            user_id = user.id
+            username = user.username or user.first_name or str(user_id)
+            
+            # Добавляем/обновляем пользователя в БД
+            self.db.add_user(user_id, user.username, user.first_name, user.last_name)
+            
+            # Проверяем аргументы команды
+            args = context.args
+            if not args:
+                # Показываем меню выбора типа отзыва
+                keyboard = [
+                    [
+                        InlineKeyboardButton("🐛 Сообщить о баге", callback_data="feedback_bug"),
+                        InlineKeyboardButton("💡 Предложить идею", callback_data="feedback_feature")
+                    ],
+                    [
+                        InlineKeyboardButton("❤️ Оставить отзыв", callback_data="feedback_review"),
+                        InlineKeyboardButton("📊 Статистика", callback_data="feedback_stats")
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    "💬 **Отзывы и предложения**\n\n"
+                    "Выберите тип сообщения:\n\n"
+                    "🐛 **Баг** - сообщить о проблеме\n"
+                    "💡 **Идея** - предложить улучшение\n"
+                    "❤️ **Отзыв** - поделиться мнением о боте\n"
+                    "📊 **Статистика** - посмотреть общую статистику\n\n"
+                    "_Или отправьте отзыв сразу:_\n"
+                    "`/feedback Ваше сообщение`",
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+                return
+                
+            # Если есть аргументы - сохраняем как общий отзыв
+            feedback_text = " ".join(args)
+            
+            if len(feedback_text) < 10:
+                await update.message.reply_text(
+                    "❌ Слишком короткое сообщение. Минимум 10 символов.\n"
+                    "Пример: `/feedback Бот отличный, но хотелось бы больше фильтров`"
+                )
+                return
+                
+            if len(feedback_text) > 1000:
+                await update.message.reply_text(
+                    "❌ Слишком длинное сообщение. Максимум 1000 символов."
+                )
+                return
+                
+            # Сохраняем отзыв в БД
+            feedback_id = self.db.add_feedback(user_id, username, "general", feedback_text)
+            
+            if feedback_id:
+                await update.message.reply_text(
+                    f"✅ **Спасибо за отзыв!**\n\n"
+                    f"Ваше сообщение получено и будет рассмотрено.\n"
+                    f"ID отзыва: `{feedback_id}`\n\n"
+                    f"💡 Используйте `/feedback` для выбора конкретного типа обращения",
+                    parse_mode='Markdown'
+                )
+                
+                # Логируем получение отзыва
+                logger.info(f"New feedback from {username} (ID: {user_id}): {feedback_text[:50]}...")
+            else:
+                await update.message.reply_text(
+                    "❌ Ошибка при сохранении отзыва. Попробуйте позже."
+                )
+                
+        except Exception as e:
+            logger.error(f"Error in feedback command: {e}")
+            await update.message.reply_text(
+                "❌ Произошла ошибка при обработке отзыва. Попробуйте позже."
+            )
+
+    async def _process_bug_report(self, update: Update, message_text: str):
+        """Обработка сообщения о баге"""
+        user = update.effective_user
+        user_id = user.id
+        username = user.username or user.first_name or str(user_id)
+        
+        if len(message_text) < 10:
+            await update.message.reply_text(
+                "❌ Слишком короткое описание бага. Минимум 10 символов.\n"
+                "Опишите проблему подробнее."
+            )
+            return
+            
+        if len(message_text) > 1000:
+            await update.message.reply_text("❌ Слишком длинное сообщение. Максимум 1000 символов.")
+            return
+            
+        # Сохраняем баг-репорт
+        feedback_id = self.db.add_feedback(user_id, username, "bug", message_text)
+        
+        if feedback_id:
+            await update.message.reply_text(
+                f"🐛 **Спасибо за сообщение о баге!**\n\n"
+                f"Ваш баг-репорт получен и будет рассмотрен разработчиками.\n"
+                f"ID сообщения: `{feedback_id}`\n\n"
+                f"🔧 Мы постараемся исправить проблему в ближайших обновлениях.",
+                parse_mode='Markdown'
+            )
+            logger.info(f"Bug report from {username} (ID: {user_id}): {message_text[:50]}...")
+        else:
+            await update.message.reply_text("❌ Ошибка при сохранении баг-репорта. Попробуйте позже.")
+            
+        self.clear_user_state(user_id)
+
+    async def _process_feature_request(self, update: Update, message_text: str):
+        """Обработка предложения новой функции"""
+        user = update.effective_user
+        user_id = user.id
+        username = user.username or user.first_name or str(user_id)
+        
+        if len(message_text) < 10:
+            await update.message.reply_text(
+                "❌ Слишком короткое описание идеи. Минимум 10 символов.\n"
+                "Опишите ваше предложение подробнее."
+            )
+            return
+            
+        if len(message_text) > 1000:
+            await update.message.reply_text("❌ Слишком длинное сообщение. Максимум 1000 символов.")
+            return
+            
+        # Сохраняем предложение
+        feedback_id = self.db.add_feedback(user_id, username, "feature", message_text)
+        
+        if feedback_id:
+            await update.message.reply_text(
+                f"💡 **Спасибо за предложение!**\n\n"
+                f"Ваша идея получена и будет рассмотрена.\n"
+                f"ID предложения: `{feedback_id}`\n\n"
+                f"🚀 Если идея будет полезной, мы добавим её в следующих версиях бота!",
+                parse_mode='Markdown'
+            )
+            logger.info(f"Feature request from {username} (ID: {user_id}): {message_text[:50]}...")
+        else:
+            await update.message.reply_text("❌ Ошибка при сохранении предложения. Попробуйте позже.")
+            
+        self.clear_user_state(user_id)
+
+    async def _process_user_review(self, update: Update, message_text: str):
+        """Обработка отзыва пользователя"""
+        user = update.effective_user
+        user_id = user.id
+        username = user.username or user.first_name or str(user_id)
+        
+        if len(message_text) < 5:
+            await update.message.reply_text(
+                "❌ Слишком короткий отзыв. Минимум 5 символов.\n"
+                "Поделитесь своими впечатлениями о боте."
+            )
+            return
+            
+        if len(message_text) > 1000:
+            await update.message.reply_text("❌ Слишком длинное сообщение. Максимум 1000 символов.")
+            return
+            
+        # Пытаемся извлечь рейтинг из сообщения
+        rating = None
+        rating_patterns = [
+            r'([1-5])/5',  # "4/5"
+            r'([1-5]) звезд',  # "4 звезды"
+            r'([1-5]) из 5',  # "4 из 5"
+            r'⭐{1,5}',  # звездочки
+            r'([1-5]) балл',  # "4 балла"
+        ]
+        
+        for pattern in rating_patterns:
+            import re
+            match = re.search(pattern, message_text)
+            if match:
+                if pattern == r'⭐{1,5}':
+                    rating = len(match.group())
+                else:
+                    rating = int(match.group(1))
+                break
+        
+        # Сохраняем отзыв
+        feedback_id = self.db.add_feedback(user_id, username, "compliment", message_text, rating)
+        
+        if feedback_id:
+            rating_text = f" (⭐ {rating}/5)" if rating else ""
+            await update.message.reply_text(
+                f"❤️ **Спасибо за отзыв!**{rating_text}\n\n"
+                f"Ваше мнение очень важно для нас!\n"
+                f"ID отзыва: `{feedback_id}`\n\n"
+                f"🙏 Благодаря таким отзывам мы делаем бота лучше!",
+                parse_mode='Markdown'
+            )
+            logger.info(f"Review from {username} (ID: {user_id}): {message_text[:50]}... Rating: {rating}")
+        else:
+            await update.message.reply_text("❌ Ошибка при сохранении отзыва. Попробуйте позже.")
+            
+        self.clear_user_state(user_id)
 
     # ================== КОНЕЦ НОВЫХ ФУНКЦИЙ ==================
     

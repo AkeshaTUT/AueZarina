@@ -1,0 +1,28 @@
+[Unit]
+Description=Steam Discount Telegram Bot
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=steambot
+Group=steambot
+WorkingDirectory=/home/steambot/steam-bot
+ExecStart=/usr/bin/python3 run_bot.py
+Restart=always
+RestartSec=10
+Environment=PYTHONPATH=/home/steambot/steam-bot
+Environment=TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN_HERE
+Environment=OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY_HERE
+
+# Логирование
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=steam-bot
+
+# Ограничения ресурсов
+MemoryMax=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

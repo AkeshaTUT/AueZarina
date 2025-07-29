@@ -77,6 +77,21 @@ class DatabaseManager:
                     )
                 ''')
                 
+                # Таблица отзывов и предложений
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS feedback (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+                        username TEXT,
+                        feedback_type TEXT DEFAULT 'general',
+                        message TEXT NOT NULL,
+                        rating INTEGER DEFAULT NULL,
+                        is_resolved BOOLEAN DEFAULT 0,
+                        admin_response TEXT DEFAULT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
                 conn.commit()
                 logger.info("Database initialized successfully")
                 
@@ -360,3 +375,81 @@ class DatabaseManager:
                 conn.commit()
         except Exception as e:
             logger.error(f"Error clearing weekly top: {e}")
+
+    def add_feedback(self, user_id: int, username: str, feedback_type: str, message: str, rating: int = None):
+        """Добавление отзыва от пользователя"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO feedback 
+                    (user_id, username, feedback_type, message, rating, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (user_id, username, feedback_type, message, rating, datetime.now()))
+                conn.commit()
+                logger.info(f"Feedback added from user {user_id}: {feedback_type}")
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Error adding feedback from user {user_id}: {e}")
+            return None
+
+    def get_feedback_stats(self):
+        """Получение статистики отзывов"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT 
+                        COUNT(*) as total,
+                        COUNT(CASE WHEN feedback_type = 'bug' THEN 1 END) as bugs,
+                        COUNT(CASE WHEN feedback_type = 'feature' THEN 1 END) as features,
+                        COUNT(CASE WHEN feedback_type = 'compliment' THEN 1 END) as compliments,
+                        COUNT(CASE WHEN is_resolved = 1 THEN 1 END) as resolved,
+                        AVG(rating) as avg_rating
+                    FROM feedback
+                ''')
+                
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'total': row[0],
+                        'bugs': row[1],
+                        'features': row[2],
+                        'compliments': row[3],
+                        'resolved': row[4],
+                        'avg_rating': round(row[5] or 0, 1)
+                    }
+                return {}
+        except Exception as e:
+            logger.error(f"Error getting feedback stats: {e}")
+            return {}
+
+    def get_recent_feedback(self, limit: int = 10):
+        """Получение последних отзывов"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, user_id, username, feedback_type, message, rating, 
+                           is_resolved, created_at
+                    FROM feedback 
+                    ORDER BY created_at DESC 
+                    LIMIT ?
+                ''', (limit,))
+                
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        'id': row[0],
+                        'user_id': row[1],
+                        'username': row[2],
+                        'type': row[3],
+                        'message': row[4],
+                        'rating': row[5],
+                        'resolved': row[6],
+                        'created_at': row[7]
+                    })
+                return results
+        except Exception as e:
+            logger.error(f"Error getting recent feedback: {e}")
+            return []
