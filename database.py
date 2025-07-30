@@ -30,10 +30,19 @@ class DatabaseManager:
                         is_subscribed BOOLEAN DEFAULT 0,
                         min_discount INTEGER DEFAULT 30,
                         preferred_genres TEXT DEFAULT '[]',
+                        language TEXT DEFAULT 'ru',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
+                
+                # Добавляем колонку языка если её нет
+                try:
+                    cursor.execute('ALTER TABLE users ADD COLUMN language TEXT DEFAULT "ru"')
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    # Колонка уже существует
+                    pass
                 
                 # Таблица истории цен (эмуляция)
                 cursor.execute('''
@@ -112,6 +121,18 @@ class DatabaseManager:
                 logger.info(f"User {user_id} added/updated")
         except Exception as e:
             logger.error(f"Error adding user {user_id}: {e}")
+    
+    def remove_user(self, user_id: int) -> bool:
+        """Удаление пользователя (для тестирования)"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error removing user {user_id}: {e}")
+            return False
     
     def subscribe_user(self, user_id: int) -> bool:
         """Подписка пользователя"""
@@ -305,7 +326,7 @@ class DatabaseManager:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT is_subscribed, min_discount, preferred_genres
+                    SELECT is_subscribed, min_discount, preferred_genres, language
                     FROM users WHERE user_id = ?
                 ''', (user_id,))
                 result = cursor.fetchone()
@@ -314,54 +335,89 @@ class DatabaseManager:
                     return {
                         'is_subscribed': bool(result[0]),
                         'min_discount': result[1],
-                        'preferred_genres': json.loads(result[2]) if result[2] else []
+                        'preferred_genres': json.loads(result[2]) if result[2] else [],
+                        'language': result[3] if result[3] else 'ru'
                     }
                 return {
                     'is_subscribed': False,
                     'min_discount': 30,
-                    'preferred_genres': []
+                    'preferred_genres': [],
+                    'language': 'ru'
                 }
         except Exception as e:
             logger.error(f"Error getting user settings for {user_id}: {e}")
             return {
                 'is_subscribed': False,
                 'min_discount': 30,
-                'preferred_genres': []
+                'preferred_genres': [],
+                'language': 'ru'
             }
 
-    def add_weekly_top_game(self, title: str, discount: int, price: float):
-        """Добавление игры в еженедельный топ"""
+    def add_weekly_top_game(self, title: str, discount: int, price: float, score: float = None):
+        """Добавление игры в еженедельный топ с рейтингом"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT OR REPLACE INTO weekly_top (game_title, discount, discounted_price)
-                    VALUES (?, ?, ?)
-                ''', (title, discount, str(price)))
+                
+                # Проверяем, есть ли колонка score в таблице
+                cursor.execute("PRAGMA table_info(weekly_top)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'score' not in columns:
+                    # Добавляем колонку score если её нет
+                    cursor.execute('ALTER TABLE weekly_top ADD COLUMN score REAL DEFAULT 0')
+                
+                if score is not None:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO weekly_top (game_title, discount, discounted_price, score)
+                        VALUES (?, ?, ?, ?)
+                    ''', (title, discount, str(price), score))
+                else:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO weekly_top (game_title, discount, discounted_price)
+                        VALUES (?, ?, ?)
+                    ''', (title, discount, str(price)))
                 conn.commit()
         except Exception as e:
             logger.error(f"Error adding weekly top game: {e}")
 
     def get_weekly_top_games(self, limit: int = 5) -> List[Dict]:
-        """Получение топ игр недели"""
+        """Получение топ игр недели с учетом рейтинга"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT game_title, discount, discounted_price 
-                    FROM weekly_top 
-                    ORDER BY discount DESC 
-                    LIMIT ?
-                ''', (limit,))
+                
+                # Проверяем, есть ли колонка score
+                cursor.execute("PRAGMA table_info(weekly_top)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'score' in columns:
+                    # Сортируем по рейтингу, если колонка есть
+                    cursor.execute('''
+                        SELECT game_title, discount, discounted_price, COALESCE(score, discount) as final_score
+                        FROM weekly_top 
+                        ORDER BY final_score DESC, discount DESC
+                        LIMIT ?
+                    ''', (limit,))
+                else:
+                    # Fallback к старому методу
+                    cursor.execute('''
+                        SELECT game_title, discount, discounted_price, discount as final_score
+                        FROM weekly_top 
+                        ORDER BY discount DESC 
+                        LIMIT ?
+                    ''', (limit,))
                 
                 results = []
                 for row in cursor.fetchall():
                     results.append({
                         'title': row[0],
                         'discount': row[1],
-                        'price': row[2]
+                        'price': row[2],
+                        'score': row[3] if len(row) > 3 else row[1]
                     })
                 return results
+                
         except Exception as e:
             logger.error(f"Error getting weekly top games: {e}")
             return []
@@ -453,3 +509,42 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error getting recent feedback: {e}")
             return []
+
+    def set_user_language(self, user_id: int, language: str):
+        """Установка языка пользователя"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE users 
+                    SET language = ?, last_activity = ?
+                    WHERE user_id = ?
+                ''', (language, datetime.now(), user_id))
+                conn.commit()
+                logger.info(f"Language updated for user {user_id}: {language}")
+        except Exception as e:
+            logger.error(f"Error setting language for user {user_id}: {e}")
+
+    def get_user_language(self, user_id: int) -> str:
+        """Получение языка пользователя"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT language FROM users WHERE user_id = ?', (user_id,))
+                result = cursor.fetchone()
+                return result[0] if result and result[0] else 'ru'
+        except Exception as e:
+            logger.error(f"Error getting language for user {user_id}: {e}")
+            return 'ru'
+
+    def is_user_subscribed(self, user_id: int) -> bool:
+        """Проверка подписки пользователя"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT is_subscribed FROM users WHERE user_id = ?', (user_id,))
+                result = cursor.fetchone()
+                return bool(result[0]) if result else False
+        except Exception as e:
+            logger.error(f"Error checking subscription for user {user_id}: {e}")
+            return False

@@ -16,6 +16,7 @@ from steam_library import get_steam_library, get_recently_played_games
 from ai_recommendations import get_game_recommendations
 from ai_game_recommendations import get_ai_game_recommendations
 from config import OPENROUTER_API_KEY, AI_RECOMMENDATIONS_ENABLED, AI_MAX_RECOMMENDATIONS
+from translations import get_text, get_available_languages
 import re
 
 # Настройка логирования
@@ -56,6 +57,10 @@ class SteamDiscountBot:
         # Новые функции
         self.application.add_handler(CommandHandler("wishlist", self.wishlist_command))
         self.application.add_handler(CommandHandler("recommend", self.ai_recommendations_command))
+        
+        # Команды для администратора
+        self.application.add_handler(CommandHandler("test_digest", self.test_weekly_digest_command))
+        self.application.add_handler(CommandHandler("send_digest", self.admin_send_digest_command))
         
         # Добавляем алиасы для русских пользователей (только латиница)
         self.application.add_handler(CommandHandler("rekomend", self.ai_recommendations_command))
@@ -154,76 +159,88 @@ class SteamDiscountBot:
         user = update.effective_user
         self.db.add_user(user.id, user.username, user.first_name, user.last_name)
         
-        welcome_message = """
-🎮 Добро пожаловать в ZarinAI! 
+        # Проверяем, выбрал ли пользователь язык
+        user_language = self.db.get_user_language(user.id)
+        
+        # Если язык не установлен или это новый пользователь, показываем выбор языка
+        if not user_language or user_language == 'ru':
+            # Показываем выбор языка
+            keyboard = [
+                [
+                    InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
+                    InlineKeyboardButton("🇺🇸 English", callback_data="lang_en")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                get_text('ru', 'choose_language'),
+                reply_markup=reply_markup
+            )
+        else:
+            # Показываем приветствие на выбранном языке
+            await self.show_welcome_message(update, user_language)
+    
+    async def show_welcome_message(self, update: Update, language: str):
+        """Показать приветственное сообщение на выбранном языке"""
+        welcome_message = f"""
+{get_text(language, 'welcome_title')} 
 
-Этот бот поможет вам находить лучшие скидки на игры в Steam от 30% до 100%!
+{get_text(language, 'welcome_description')}
 
-🔥 <b>Основные возможности:</b>
-🎯 Фильтр по жанрам - выберите интересующие категории
-🆓 Бесплатные раздачи - актуальные раздачи игр
-📊 История цен - отслеживание лучших предложений
-⚙️ Персональные настройки скидок
-📅 Еженедельный ТОП-5 игр
+{get_text(language, 'main_features')}
+{get_text(language, 'genre_filter')}
+{get_text(language, 'free_games')}
+{get_text(language, 'price_history')}
+{get_text(language, 'personal_settings')}
+{get_text(language, 'weekly_digest')}
 
-🚀 <b>Новые функции:</b>
-💝 Анализ Steam Wishlist - проверка скидок на желаемые игры
-🤖 AI-рекомендации - персональные советы на базе ваших предпочтений
+{get_text(language, 'new_features')}
+{get_text(language, 'wishlist_analysis')}
+{get_text(language, 'ai_recommendations')}
 
-<b>Основные команды:</b>
-/subscribe - Подписаться на уведомления о скидках
-/deals - Получить текущие скидки
-/genres - Настроить жанры игр
-/free - Посмотреть бесплатные раздачи
-/discount - Настроить минимальную скидку
-/settings - Ваши настройки
+{get_text(language, 'basic_commands')}
+{get_text(language, 'cmd_subscribe')}
+{get_text(language, 'cmd_deals')}
+{get_text(language, 'cmd_genres')}
+{get_text(language, 'cmd_free')}
+{get_text(language, 'cmd_discount')}
+{get_text(language, 'cmd_settings')}
 
-<b>Новые команды:</b>
-/wishlist - Проверить скидки в вашем Steam Wishlist
-/recommend - Получить AI-рекомендации игр
-/help - Полная справка по всем командам
+{get_text(language, 'new_commands')}
+{get_text(language, 'cmd_wishlist')}
+{get_text(language, 'cmd_recommend')}
+{get_text(language, 'cmd_help')}
 
-Бот автоматически присылает новые скидки каждые 6 часов и еженедельный ТОП по пятницам в 19:00!
+{get_text(language, 'auto_notifications')}
         """
         await update.message.reply_text(welcome_message, parse_mode='HTML')
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /help"""
-        help_message = """
-🔧 <b>Все команды бота:</b>
+        user_id = update.effective_user.id
+        language = self.db.get_user_language(user_id)
+        
+        help_message = f"""
+{get_text(language, 'all_commands')}
 
-<b>Основные:</b>
-/start - Приветственное сообщение и регистрация
-/subscribe - Подписаться на автоматические уведомления
-/unsubscribe - Отписаться от уведомлений
-/deals - Получить список текущих скидок
+{get_text(language, 'basic_title')}
+{get_text(language, 'start_desc')}
+{get_text(language, 'subscribe_desc')}
+{get_text(language, 'unsubscribe_desc')}
+{get_text(language, 'deals_desc')}
+{get_text(language, 'free_desc')}
+{get_text(language, 'genres_desc')}
+{get_text(language, 'discount_desc')}
+{get_text(language, 'settings_desc')}
+{get_text(language, 'weeklydigest_desc')}
+{get_text(language, 'feedback_desc')}
 
-<b>Настройки:</b>
-/genres или /жанры - Выбрать интересующие жанры игр
-/discount или /скидка - Установить минимальную скидку (30%, 50%, 70%, 90%)
-/settings - Посмотреть ваши текущие настройки
+{get_text(language, 'new_title')}
+{get_text(language, 'wishlist_desc')}
+{get_text(language, 'recommend_desc')}
 
-<b>Стандартные функции:</b>
-/free или /раздачи - Посмотреть актуальные бесплатные раздачи
-/weeklydigest - Получить еженедельный ТОП-5 игр
-/help - Показать эту справку
-
-<b>🚀 НОВЫЕ ФУНКЦИИ:</b>
-💝 /wishlist - Анализ вашего Steam Wishlist
-   Отправьте ссылку на публичный Steam-профиль для проверки скидок
-
-🤖 /recommend или /rekomend - ИИ-рекомендации игр на основе Wishlist и библиотеки
-   Проанализирует ваш Steam Wishlist и библиотеку игр для персональных рекомендаций
-
-💬 /feedback - Отправить отзыв, сообщить о баге или предложить идею
-   Поможет сделать бота лучше!
-
-<b>🤖 Автоматические функции:</b>
-📊 Бот ищет скидки от 30% до 100% в Steam Store
-🎯 Фильтрует по вашим жанрам и минимальной скидке
-🔔 Присылает уведомления каждые 6 часов
-📅 Отправляет ТОП-5 игр недели по воскресеньям в 18:00
-💰 Показывает историю цен и лучшие предложения
+{get_text(language, 'help_footer')}
         """
         await update.message.reply_text(help_message, parse_mode='HTML')
     
@@ -231,41 +248,32 @@ class SteamDiscountBot:
         """Обработчик команды /subscribe"""
         user_id = update.effective_user.id
         user = update.effective_user
+        language = self.db.get_user_language(user_id)
         
         # Добавляем пользователя если его нет
         self.db.add_user(user_id, user.username, user.first_name, user.last_name)
         
         if self.db.subscribe_user(user_id):
-            settings = self.db.get_user_settings(user_id)
-            
-            response = "✅ Вы успешно подписались на уведомления о скидках!\n\n"
-            response += f"📊 Ваши настройки:\n"
-            response += f"💰 Минимальная скидка: {settings['min_discount']}%\n"
-            
-            if settings['preferred_genres']:
-                response += f"🎮 Жанры: {', '.join(settings['preferred_genres'])}\n"
-            else:
-                response += f"🎮 Жанры: Все (настройте через /genres)\n"
-            
-            response += f"\n🔔 Бот будет присылать новые предложения каждые 6 часов"
-            response += f"\n📅 И еженедельный ТОП-5 по пятницам в 19:00"
-            
+            response = get_text(language, 'subscribed_success')
             await update.message.reply_text(response)
         else:
-            await update.message.reply_text("ℹ️ Вы уже подписаны на уведомления.")
+            await update.message.reply_text(get_text(language, 'already_subscribed'))
     
     async def unsubscribe_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /unsubscribe"""
         user_id = update.effective_user.id
+        language = self.db.get_user_language(user_id)
+        
         if self.db.unsubscribe_user(user_id):
-            await update.message.reply_text("❌ Вы успешно отписались от уведомлений.")
+            await update.message.reply_text(get_text(language, 'unsubscribed_success'))
         else:
-            await update.message.reply_text("ℹ️ Вы не были подписаны на уведомления.")
+            await update.message.reply_text(get_text(language, 'not_subscribed'))
     
     async def genres_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /genres - настройка жанров"""
         user_id = update.effective_user.id
         user = update.effective_user
+        language = self.db.get_user_language(user_id)
         self.db.add_user(user_id, user.username, user.first_name, user.last_name)
         
         current_genres = self.db.get_user_genres(user_id)
@@ -287,18 +295,18 @@ class SteamDiscountBot:
         
         # Добавляем кнопки управления
         keyboard.append([
-            InlineKeyboardButton("🔄 Сбросить все", callback_data="genre_clear"),
-            InlineKeyboardButton("✅ Сохранить", callback_data="genre_save")
+            InlineKeyboardButton(get_text(language, 'clear_all_genres'), callback_data="genre_clear"),
+            InlineKeyboardButton(get_text(language, 'save_genres'), callback_data="genre_save")
         ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        message = f"🎮 <b>Выберите интересующие жанры игр:</b>\n\n"
+        message = get_text(language, 'select_genres_title')
         if current_genres:
-            message += f"Выбрано: {', '.join(current_genres)}\n\n"
+            message += get_text(language, 'selected_genres', genres=', '.join(current_genres))
         else:
-            message += "Сейчас выбраны все жанры\n\n"
-        message += "Нажмите на жанр чтобы добавить/убрать его из списка"
+            message += get_text(language, 'all_genres_selected')
+        message += get_text(language, 'genres_instruction')
         
         await update.message.reply_text(message, reply_markup=reply_markup, parse_mode='HTML')
     
@@ -306,9 +314,10 @@ class SteamDiscountBot:
         """Обработчик команды /free - бесплатные раздачи"""
         user_id = update.effective_user.id
         user = update.effective_user
+        language = self.db.get_user_language(user_id)
         self.db.add_user(user_id, user.username, user.first_name, user.last_name)
         
-        await update.message.reply_text("🔍 Ищу актуальные бесплатные раздачи... Пожалуйста, подождите.")
+        await update.message.reply_text(get_text(language, 'searching_free_games'))
         
         try:
             # Импортируем упрощенный парсер бесплатных игр
@@ -321,12 +330,12 @@ class SteamDiscountBot:
             await self._update_database_with_live_games(all_games)
             
             if not all_games:
-                await update.message.reply_text("😔 На данный момент не удалось получить информацию о бесплатных раздачах. Попробуйте позже.")
+                await update.message.reply_text(get_text(language, 'no_free_games'))
                 return
             
             # Ограничиваем количество для отображения
             display_games = all_games[:10]
-            message = f"🆓 <b>Актуальные бесплатные раздачи ({len(display_games)}):</b>\n\n"
+            message = f"{get_text(language, 'free_games_title')}\n\n"
             
             for game in display_games:
                 # Определяем эмодзи платформы
@@ -337,22 +346,25 @@ class SteamDiscountBot:
                     'Other': '⚪'
                 }.get(game.get('platform', 'Other'), '⚪')
                 
-                title = game.get('title', 'Неизвестная игра')
-                description = game.get('description', 'Описание отсутствует')
-                end_date = game.get('end_date', 'Неизвестно')
+                title = game.get('title', 'Unknown Game' if language == 'en' else 'Неизвестная игра')
+                description = game.get('description', 'No description' if language == 'en' else 'Описание отсутствует')
+                end_date = game.get('end_date', 'Unknown' if language == 'en' else 'Неизвестно')
                 url = game.get('url', '')
                 
                 message += f"{platform_emoji} <b>{title}</b>\n"
                 message += f"📝 {description}\n"
-                message += f"🗓️ До: {end_date}\n"
+                message += f"🗓️ {get_text(language, 'game_ends')}{end_date}\n"
                 if url:
-                    message += f"🔗 <a href='{url}'>Получить игру</a>\n"
+                    get_game_text = "Get game" if language == 'en' else "Получить игру"
+                    message += f"🔗 <a href='{url}'>{get_game_text}</a>\n"
                 message += "\n"
             
             if len(all_games) > 10:
-                message += f"💡 <i>И еще {len(all_games) - 10} раздач...</i>\n"
+                more_text = f"And {len(all_games) - 10} more giveaways..." if language == 'en' else f"И еще {len(all_games) - 10} раздач..."
+                message += f"💡 <i>{more_text}</i>\n"
             
-            message += "\n🔄 <i>Данные обновляются в реальном времени</i>"
+            realtime_text = "Data updated in real time" if language == 'en' else "Данные обновляются в реальном времени"
+            message += f"\n🔄 <i>{realtime_text}</i>"
             
             # Разбиваем сообщение если оно слишком длинное
             if len(message) > 4000:
@@ -364,7 +376,7 @@ class SteamDiscountBot:
                 
         except Exception as e:
             logger.error(f"Error getting free games: {e}")
-            await update.message.reply_text("❌ Произошла ошибка при получении бесплатных раздач. Попробуйте позже.")
+            await update.message.reply_text(get_text(language, 'error_free_games'))
     
     async def _update_database_with_live_games(self, games: list):
         """Обновляет базу данных актуальными играми"""
@@ -397,6 +409,7 @@ class SteamDiscountBot:
         """Обработчик команды /discount - настройка минимальной скидки"""
         user_id = update.effective_user.id
         user = update.effective_user
+        language = self.db.get_user_language(user_id)
         self.db.add_user(user_id, user.username, user.first_name, user.last_name)
         
         current_discount = self.db.get_user_min_discount(user_id)
@@ -415,9 +428,9 @@ class SteamDiscountBot:
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        message = f"💰 <b>Настройка минимальной скидки</b>\n\n"
-        message += f"Текущая настройка: <b>{current_discount}%</b>\n\n"
-        message += f"Выберите минимальную скидку для показа игр:"
+        message = get_text(language, 'discount_settings_title')
+        message += get_text(language, 'current_discount', discount=current_discount)
+        message += get_text(language, 'select_min_discount')
         
         await update.message.reply_text(message, reply_markup=reply_markup, parse_mode='HTML')
     
@@ -428,22 +441,24 @@ class SteamDiscountBot:
         self.db.add_user(user_id, user.username, user.first_name, user.last_name)
         
         settings = self.db.get_user_settings(user_id)
+        language = settings.get('language', 'ru')
         
-        message = f"⚙️ <b>Ваши настройки:</b>\n\n"
-        message += f"🔔 Уведомления: {'✅ Включены' if settings['is_subscribed'] else '❌ Выключены'}\n"
-        message += f"💰 Минимальная скидка: <b>{settings['min_discount']}%</b>\n"
+        subscription_status = get_text(language, 'subscribed') if settings['is_subscribed'] else get_text(language, 'not_subscribed_status')
+        genres_text = ', '.join(settings['preferred_genres']) if settings['preferred_genres'] else get_text(language, 'no_genres_selected')
         
-        if settings['preferred_genres']:
-            message += f"🎮 Жанры ({len(settings['preferred_genres'])}): {', '.join(settings['preferred_genres'])}\n"
-        else:
-            message += f"🎮 Жанры: Все жанры\n"
+        message = f"{get_text(language, 'your_settings')}\n\n"
+        message += f"🔔 {get_text(language, 'subscription_status')}{subscription_status}\n"
+        message += f"💰 {get_text(language, 'min_discount_setting')}<b>{settings['min_discount']}%</b>\n"
+        message += f"🎮 {get_text(language, 'selected_genres')}{genres_text}\n"
+        message += f"🌍 Language: {'🇷🇺 Русский' if language == 'ru' else '🇺🇸 English'}\n"
         
-        message += f"\n<b>Управление:</b>\n"
-        message += f"/subscribe - Включить уведомления\n"
-        message += f"/genres - Настроить жанры\n"
-        message += f"/discount - Изменить минимальную скидку"
+        # Добавляем кнопку для смены языка
+        keyboard = [
+            [InlineKeyboardButton(get_text(language, 'change_language'), callback_data="change_language")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(message, parse_mode='HTML')
+        await update.message.reply_text(message, parse_mode='HTML', reply_markup=reply_markup)
     
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик callback кнопок"""
@@ -453,32 +468,85 @@ class SteamDiscountBot:
         user_id = query.from_user.id
         data = query.data
         
-        if data.startswith("genre_"):
+        if data.startswith("lang_"):
+            await self.handle_language_callback(query, user_id, data)
+        elif data == "change_language":
+            await self.handle_change_language_callback(query, user_id)
+        elif data.startswith("genre_"):
             await self.handle_genre_callback(query, user_id, data)
         elif data.startswith("discount_"):
             await self.handle_discount_callback(query, user_id, data)
         elif data.startswith("feedback_"):
             await self.handle_feedback_callback(query, user_id, data)
     
+    async def handle_language_callback(self, query, user_id: int, data: str):
+        """Обработка callback для выбора языка"""
+        language = data.replace("lang_", "")
+        
+        # Сохраняем выбранный язык
+        self.db.set_user_language(user_id, language)
+        
+        # Отправляем подтверждение и приветственное сообщение
+        await query.edit_message_text(get_text(language, 'language_changed'))
+        
+        # Создаем фиктивное обновление для отправки приветственного сообщения
+        from telegram import Message, Chat, User
+        fake_message = Message(
+            message_id=0,
+            date=None,
+            chat=query.message.chat,
+            from_user=query.from_user
+        )
+        fake_update = type('Update', (), {
+            'message': fake_message,
+            'effective_user': query.from_user
+        })()
+        
+        # Отправляем приветственное сообщение на выбранном языке
+        await self.show_welcome_message(fake_update, language)
+    
+    async def handle_change_language_callback(self, query, user_id: int):
+        """Обработка callback для смены языка из настроек"""
+        current_language = self.db.get_user_language(user_id)
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
+                InlineKeyboardButton("🇺🇸 English", callback_data="lang_en")
+            ],
+            [InlineKeyboardButton(get_text(current_language, 'back_button'), callback_data="back_to_settings")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            get_text(current_language, 'choose_language'),
+            reply_markup=reply_markup
+        )
+    
     async def handle_genre_callback(self, query, user_id: int, data: str):
         """Обработка callback для жанров"""
+        language = self.db.get_user_language(user_id)
         current_genres = self.db.get_user_genres(user_id)
         
         if data == "genre_clear":
             # Очищаем все жанры
             self.db.set_user_genres(user_id, [])
-            await query.edit_message_text(
-                "🎮 <b>Все жанры очищены!</b>\n\nТеперь будут показываться игры всех жанров.\n\nИспользуйте /genres для новых настроек.",
-                parse_mode='HTML'
-            )
+            if language == 'ru':
+                message = "🎮 <b>Все жанры очищены!</b>\n\nТеперь будут показываться игры всех жанров.\n\nИспользуйте /genres для новых настроек."
+            else:
+                message = "🎮 <b>All genres cleared!</b>\n\nNow games of all genres will be shown.\n\nUse /genres for new settings."
+            await query.edit_message_text(message, parse_mode='HTML')
             return
         elif data == "genre_save":
             # Сохраняем настройки
-            genres_text = ', '.join(current_genres) if current_genres else "Все жанры"
-            await query.edit_message_text(
-                f"✅ <b>Настройки жанров сохранены!</b>\n\n🎮 Выбранные жанры: {genres_text}\n\nТеперь в рассылке будут только игры выбранных жанров.",
-                parse_mode='HTML'
+            genres_text = ', '.join(current_genres) if current_genres else (
+                "Все жанры" if language == 'ru' else "All genres"
             )
+            if language == 'ru':
+                message = f"✅ <b>Настройки жанров сохранены!</b>\n\n🎮 Выбранные жанры: {genres_text}\n\nТеперь в рассылке будут только игры выбранных жанров."
+            else:
+                message = f"✅ <b>Genre settings saved!</b>\n\n🎮 Selected genres: {genres_text}\n\nNow only games of selected genres will be shown in notifications."
+            await query.edit_message_text(message, parse_mode='HTML')
             return
         else:
             # Переключаем жанр
@@ -505,74 +573,58 @@ class SteamDiscountBot:
             keyboard.append(row)
         
         keyboard.append([
-            InlineKeyboardButton("🔄 Сбросить все", callback_data="genre_clear"),
-            InlineKeyboardButton("✅ Сохранить", callback_data="genre_save")
+            InlineKeyboardButton(get_text(language, 'clear_all_genres'), callback_data="genre_clear"),
+            InlineKeyboardButton(get_text(language, 'save_genres'), callback_data="genre_save")
         ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        message = f"🎮 <b>Выберите интересующие жанры игр:</b>\n\n"
+        message = get_text(language, 'select_genres_title')
         if current_genres:
-            message += f"Выбрано: {', '.join(current_genres)}\n\n"
+            message += get_text(language, 'selected_genres', genres=', '.join(current_genres))
         else:
-            message += "Сейчас выбраны все жанры\n\n"
-        message += "Нажмите на жанр чтобы добавить/убрать его из списка"
+            message += get_text(language, 'all_genres_selected')
+        message += get_text(language, 'genres_instruction')
         
         await query.edit_message_text(message, reply_markup=reply_markup, parse_mode='HTML')
     
     async def handle_discount_callback(self, query, user_id: int, data: str):
         """Обработка callback для настройки скидки"""
+        language = self.db.get_user_language(user_id)
         discount_value = int(data.replace("discount_", ""))
         self.db.set_user_min_discount(user_id, discount_value)
         
-        await query.edit_message_text(
-            f"✅ <b>Настройка сохранена!</b>\n\n💰 Минимальная скидка установлена: <b>{discount_value}%</b>\n\nТеперь в рассылке будут только игры со скидкой от {discount_value}% и выше.",
-            parse_mode='HTML'
-        )
+        message = get_text(language, 'discount_updated', discount=discount_value)
+        if language == 'ru':
+            message += f"\n\nТеперь в рассылке будут только игры со скидкой от {discount_value}% и выше."
+        else:
+            message += f"\n\nNow notifications will only include games with discounts of {discount_value}% and higher."
+        
+        await query.edit_message_text(message, parse_mode='HTML')
 
     async def handle_feedback_callback(self, query, user_id: int, data: str):
         """Обработка callback для отзывов"""
+        language = self.db.get_user_language(user_id)
         user = query.from_user
         username = user.username or user.first_name or str(user_id)
         
         if data == "feedback_bug":
             # Устанавливаем состояние ожидания сообщения о баге
             self.set_user_state(user_id, "waiting_bug_report")
-            await query.edit_message_text(
-                "🐛 **Сообщить о баге**\n\n"
-                "Опишите проблему как можно подробнее:\n"
-                "• Что вы делали?\n"
-                "• Что произошло?\n"
-                "• Что ожидали увидеть?\n\n"
-                "_Отправьте ваше сообщение в следующем сообщении:_",
-                parse_mode='Markdown'
-            )
+            message = get_text(language, 'feedback_prompt')
+            await query.edit_message_text(message, parse_mode='HTML')
             
         elif data == "feedback_feature":
             # Устанавливаем состояние ожидания предложения
             self.set_user_state(user_id, "waiting_feature_request")
-            await query.edit_message_text(
-                "💡 **Предложить идею**\n\n"
-                "Опишите ваше предложение:\n"
-                "• Какую функцию хотите добавить?\n"
-                "• Как она должна работать?\n"
-                "• Зачем она нужна?\n\n"
-                "_Отправьте ваше предложение в следующем сообщении:_",
-                parse_mode='Markdown'
-            )
+            message = get_text(language, 'feedback_prompt')
+            await query.edit_message_text(message, parse_mode='HTML')
             
         elif data == "feedback_review":
             # Устанавливаем состояние ожидания отзыва
             self.set_user_state(user_id, "waiting_review")
-            await query.edit_message_text(
-                "❤️ **Оставить отзыв**\n\n"
-                "Поделитесь своими впечатлениями о боте:\n"
-                "• Что вам нравится?\n"
-                "• Что можно улучшить?\n"
-                "• Оцените бота от 1 до 5 звезд\n\n"
-                "_Отправьте ваш отзыв в следующем сообщении:_",
-                parse_mode='Markdown'
-            )
+            message = get_text(language, 'feedback_prompt')
+            await query.edit_message_text(message, parse_mode='HTML')
             
         elif data == "feedback_stats":
             # Показываем статистику отзывов
@@ -597,7 +649,9 @@ class SteamDiscountBot:
     async def deals_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /deals"""
         user_id = update.effective_user.id
-        await update.message.reply_text("🔍 Ищу актуальные скидки... Пожалуйста, подождите.")
+        language = self.db.get_user_language(user_id)
+        
+        await update.message.reply_text(get_text(language, 'searching_deals'))
         
         try:
             # Регистрируем пользователя если его нет в базе
@@ -612,8 +666,11 @@ class SteamDiscountBot:
             # Фильтруем игры по пользовательским настройкам
             filtered_deals = self.filter_deals_by_user_preferences(deals, user_genres, min_discount)
             
+            # Обновляем данные для еженедельного дайджеста
+            self.update_weekly_digest_data(deals)
+            
             if filtered_deals:
-                message = self.format_deals_message(filtered_deals, user_id)
+                message = self.format_deals_message(filtered_deals, user_id, language)
                 
                 # Telegram имеет ограничение на длину сообщения в 4096 символов
                 if len(message) > 4000:
@@ -624,10 +681,10 @@ class SteamDiscountBot:
                 else:
                     await update.message.reply_text(message, parse_mode='HTML')
             else:
-                await update.message.reply_text(f"😔 На данный момент нет подходящих скидок от {min_discount}% с выбранными жанрами.")
+                await update.message.reply_text(get_text(language, 'no_suitable_deals', min_discount=min_discount))
         except Exception as e:
             logger.error(f"Error getting deals: {e}")
-            await update.message.reply_text("❌ Произошла ошибка при получении скидок. Попробуйте позже.")
+            await update.message.reply_text(get_text(language, 'error_getting_deals'))
     
     def filter_deals_by_user_preferences(self, deals, user_genres, min_discount):
         """Фильтрует игры по пользовательским настройкам"""
@@ -652,17 +709,20 @@ class SteamDiscountBot:
         
         return filtered_deals
     
-    def format_deals_message(self, deals, user_id: int):
+    def format_deals_message(self, deals, user_id: int, language: str = 'ru'):
         """Форматирует сообщение со скидками с учетом истории цен"""
         if not deals:
-            return "😔 На данный момент нет подходящих скидок."
+            return get_text(language, 'no_suitable_deals', min_discount=30)
         
-        message = f"🎮 <b>Актуальные скидки Steam ({len(deals)} игр)</b>\n\n"
+        # Заголовок на соответствующем языке
+        title_text = "Актуальные скидки Steam" if language == 'ru' else "Current Steam Deals"
+        games_text = "игр" if language == 'ru' else "games"
+        message = f"🎮 <b>{title_text} ({len(deals)} {games_text})</b>\n\n"
         
         # Показываем все найденные игры, не ограничивая до 20
         for deal in deals:
             discount = deal.get('discount', 0)
-            title = deal.get('title', 'Неизвестная игра')
+            title = deal.get('title', 'Unknown Game' if language == 'en' else 'Неизвестная игра')
             url = deal.get('url', '')
             original_price = deal.get('original_price', '')
             discounted_price = deal.get('discounted_price', '')
@@ -715,28 +775,36 @@ class SteamDiscountBot:
     async def weeklydigest_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Отправляет еженедельный дайджест топ-5 игр с самыми большими скидками"""
         user_id = update.effective_user.id
-        await update.message.reply_text("📊 Формирую еженедельный дайджест...")
+        language = self.db.get_user_language(user_id)
+        
+        await update.message.reply_text(get_text(language, 'generating_weekly_digest'))
         
         try:
             # Получаем топ-5 игр за неделю
             weekly_top = self.db.get_weekly_top_games()
             
             if weekly_top:
-                message = "📊 <b>Топ-5 игр недели по размеру скидки</b>\n\n"
+                message = get_text(language, 'weekly_digest_title') + "\n\n"
+                message += get_text(language, 'weekly_digest_subtitle') + "\n\n"
                 
                 for i, game in enumerate(weekly_top[:5], 1):
                     emoji = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][i-1]
                     message += f"{emoji} <b>{game['title']}</b>\n"
-                    message += f"💸 Скидка: <b>-{game['discount']}%</b>\n"
-                    message += f"💰 Цена: <b>{game['price']}₽</b>\n\n"
+                    
+                    if language == 'ru':
+                        message += f"💸 Скидка: <b>-{game['discount']}%</b>\n"
+                        message += f"💰 Цена: <b>{game['price']}₽</b>\n\n"
+                    else:
+                        message += f"� Discount: <b>-{game['discount']}%</b>\n"
+                        message += f"💰 Price: <b>${game['price']}</b>\n\n"
                 
                 await update.message.reply_text(message, parse_mode='HTML')
             else:
-                await update.message.reply_text("📊 Еще нет данных для еженедельного дайджеста.")
+                await update.message.reply_text(get_text(language, 'no_weekly_data'))
                 
         except Exception as e:
             logger.error(f"Error getting weekly digest: {e}")
-            await update.message.reply_text("❌ Произошла ошибка при получении дайджеста.")
+            await update.message.reply_text(get_text(language, 'error_getting_digest'))
     
     async def send_weekly_digest_to_all(self):
         """Отправляет еженедельный дайджест всем пользователям"""
@@ -745,30 +813,51 @@ class SteamDiscountBot:
             weekly_top = self.db.get_weekly_top_games()
             
             if not weekly_top:
+                logger.info("No weekly data available for digest")
                 return
             
-            message = "📊 <b>Еженедельный дайджест Steam</b>\n\n"
-            message += "🏆 <b>Топ-5 игр недели по размеру скидки:</b>\n\n"
-            
-            for i, game in enumerate(weekly_top[:5], 1):
-                emoji = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][i-1]
-                message += f"{emoji} <b>{game['title']}</b>\n"
-                message += f"💸 Скидка: <b>-{game['discount']}%</b>\n"
-                message += f"💰 Цена: <b>{game['price']}₽</b>\n\n"
-            
-            message += "🎮 Хотите получать персональные уведомления? Настройте жанры командой /genres"
+            logger.info(f"Sending weekly digest to {len(users)} users")
             
             # Отправляем всем подписанным пользователям
+            sent_count = 0
+            failed_count = 0
+            
             for user_id in users:
                 try:
+                    # Получаем язык пользователя
+                    language = self.db.get_user_language(user_id)
+                    
+                    # Формируем сообщение на языке пользователя
+                    message = get_text(language, 'weekly_digest_title') + "\n\n"
+                    message += get_text(language, 'weekly_digest_subtitle') + "\n\n"
+                    
+                    for i, game in enumerate(weekly_top[:5], 1):
+                        emoji = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][i-1]
+                        message += f"{emoji} <b>{game['title']}</b>\n"
+                        
+                        if language == 'ru':
+                            message += f"💸 Скидка: <b>-{game['discount']}%</b>\n"
+                            message += f"💰 Цена: <b>{game['price']}₽</b>\n\n"
+                        else:
+                            message += f"💸 Discount: <b>-{game['discount']}%</b>\n"
+                            message += f"💰 Price: <b>${game['price']}</b>\n\n"
+                    
+                    # Добавляем призыв к действию
+                    message += get_text(language, 'weekly_digest_cta')
+                    
                     await self.application.bot.send_message(
                         chat_id=user_id,
                         text=message,
                         parse_mode='HTML'
                     )
+                    sent_count += 1
                     await asyncio.sleep(0.1)  # Небольшая задержка между отправками
+                    
                 except Exception as e:
                     logger.error(f"Failed to send weekly digest to user {user_id}: {e}")
+                    failed_count += 1
+            
+            logger.info(f"Weekly digest sent: {sent_count} successful, {failed_count} failed")
             
             # Очищаем данные для новой недели
             self.db.clear_weekly_top()
@@ -779,19 +868,255 @@ class SteamDiscountBot:
     def start_scheduler(self):
         """Запускает планировщик для еженедельной рассылки"""
         def schedule_checker():
+            logger.info("Weekly digest scheduler thread started")
             while True:
-                schedule.run_pending()
-                time.sleep(60)  # Проверяем каждую минуту
+                try:
+                    schedule.run_pending()
+                    time.sleep(60)  # Проверяем каждую минуту
+                except Exception as e:
+                    logger.error(f"Error in scheduler: {e}")
+                    time.sleep(60)
         
-        # Планируем отправку каждую неделю в воскресенье в 18:00
-        schedule.every().sunday.at("18:00").do(
-            lambda: asyncio.create_task(self.send_weekly_digest_to_all())
-        )
+        # Планируем отправку каждую неделю в воскресенье в 18:00 МСК
+        def run_weekly_digest():
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.send_weekly_digest_to_all())
+                loop.close()
+            except Exception as e:
+                logger.error(f"Error running weekly digest: {e}")
+        
+        schedule.every().sunday.at("18:00").do(run_weekly_digest)
+        
+        # Для тестирования - можно раскомментировать для отправки каждые 5 минут
+        # schedule.every(5).minutes.do(run_weekly_digest)
         
         # Запускаем планировщик в отдельном потоке
         scheduler_thread = threading.Thread(target=schedule_checker, daemon=True)
         scheduler_thread.start()
-        logger.info("Weekly digest scheduler started")
+        logger.info("Weekly digest scheduler configured: every Sunday at 18:00 MSK")
+
+    def update_weekly_digest_data(self, deals):
+        """Обновляет данные для еженедельного дайджеста на основе полученных скидок с учетом популярности"""
+        try:
+            if not deals:
+                return
+            
+            # Рассчитываем рейтинг для каждой игры на основе нескольких факторов
+            scored_deals = []
+            
+            for deal in deals:
+                title = deal.get('title', '')
+                discount = deal.get('discount', 0)
+                discounted_price = deal.get('discounted_price', '0')
+                
+                # Извлекаем числовое значение цены
+                try:
+                    price_str = str(discounted_price).replace('₽', '').replace('$', '').replace(',', '.').strip()
+                    price = float(price_str) if price_str else 0.0
+                except (ValueError, AttributeError):
+                    price = 0.0
+                
+                if not title or discount <= 0:
+                    continue
+                
+                # Рассчитываем комплексный рейтинг игры
+                score = self._calculate_game_score(deal)
+                
+                scored_deals.append({
+                    'deal': deal,
+                    'title': title,
+                    'discount': discount,
+                    'price': price,
+                    'score': score
+                })
+            
+            # Сортируем по комплексному рейтингу (по убыванию)
+            sorted_deals = sorted(scored_deals, key=lambda x: x['score'], reverse=True)
+            
+            # Берем топ-15 игр с лучшим рейтингом для еженедельного дайджеста
+            top_deals = sorted_deals[:15]
+            
+            for scored_deal in top_deals:
+                title = scored_deal['title']
+                discount = scored_deal['discount']
+                price = scored_deal['price']
+                score = scored_deal['score']
+                
+                # Сохраняем в базу с дополнительной информацией о рейтинге
+                self.db.add_weekly_top_game(title, discount, price, score)
+                    
+            logger.info(f"Updated weekly digest data with {len(top_deals)} games (algorithm: discount + popularity)")
+            
+        except Exception as e:
+            logger.error(f"Error updating weekly digest data: {e}")
+    
+    def _calculate_game_score(self, deal):
+        """Рассчитывает комплексный рейтинг игры для еженедельного дайджеста"""
+        try:
+            # Базовые параметры
+            discount = deal.get('discount', 0)
+            title = deal.get('title', '').lower()
+            
+            # Извлекаем цену
+            discounted_price = deal.get('discounted_price', '0')
+            try:
+                price_str = str(discounted_price).replace('₽', '').replace('$', '').replace(',', '.').strip()
+                price = float(price_str) if price_str else 0.0
+            except:
+                price = 0.0
+            
+            # 1. Базовый рейтинг скидки (0-100 баллов)
+            discount_score = min(discount, 90)  # Максимум 90 баллов за скидку
+            
+            # 2. Популярность игры (эвристический подход)
+            popularity_score = 0
+            
+            # Известные популярные игры/серии (бонус +30 баллов)
+            popular_keywords = [
+                'cyberpunk', 'witcher', 'gta', 'elder scrolls', 'fallout', 'assassin',
+                'call of duty', 'battlefield', 'counter-strike', 'dota', 'steam',
+                'fifa', 'tomb raider', 'far cry', 'watch dogs', 'rainbow six',
+                'grand theft', 'red dead', 'mass effect', 'dragon age', 'bioshock',
+                'borderlands', 'civilization', 'total war', 'mortal kombat', 'tekken',
+                'street fighter', 'dark souls', 'elden ring', 'sekiro', 'bloodborne',
+                'resident evil', 'silent hill', 'dead space', 'metro', 'stalker',
+                'dying light', 'left 4 dead', 'portal', 'half-life', 'team fortress',
+                'dishonored', 'prey', 'doom', 'wolfenstein', 'quake', 'unreal',
+                'forza', 'need for speed', 'burnout', 'dirt', 'f1', 'wreckfest',
+                'xcom', 'cities skylines', 'europa universalis', 'crusader kings',
+                'hearts of iron', 'stellaris', 'age of empires', 'starcraft',
+                'warcraft', 'world of warcraft', 'overwatch', 'diablo', 'heroes',
+                'destiny', 'division', 'ghost recon', 'splinter cell', 'prince',
+                'just cause', 'saints row', 'mafia', 'hitman', 'deus ex',
+                'batman', 'spider-man', 'mortal kombat', 'injustice', 'marvel',
+                'dc comics', 'lego', 'minecraft', 'terraria', 'stardew valley',
+                'hollow knight', 'ori and', 'cuphead', 'celeste', 'hades',
+                'rocket league', 'fall guys', 'among us', 'valheim', 'rust',
+                'pubg', 'fortnite', 'apex legends', 'titanfall', 'warframe'
+            ]
+            
+            for keyword in popular_keywords:
+                if keyword in title:
+                    popularity_score += 30
+                    break  # Только один бонус за популярность
+            
+            # 3. Ценовая категория (баланс цена/качество)
+            price_score = 0
+            if 0 < price <= 500:      # Доступные игры
+                price_score = 25
+            elif 500 < price <= 1500: # Средний сегмент
+                price_score = 20
+            elif 1500 < price <= 3000: # Премиум игры
+                price_score = 15
+            else:                     # Очень дорогие
+                price_score = 5
+            
+            # 4. Бонусы за особые ключевые слова
+            bonus_score = 0
+            
+            # Свежие/популярные жанры (+10 баллов)
+            trending_keywords = [
+                'battle royale', 'survival', 'crafting', 'open world', 'rpg',
+                'multiplayer', 'co-op', 'indie', 'early access', 'vr',
+                'roguelike', 'metroidvania', 'soulslike', 'tactical', 'strategy'
+            ]
+            
+            game_description = deal.get('description', '').lower()
+            full_text = title + ' ' + game_description
+            
+            for keyword in trending_keywords:
+                if keyword in full_text:
+                    bonus_score += 5
+                    break
+            
+            # 5. Штрафы
+            penalty = 0
+            
+            # Штраф за DLC/Season Pass (-15 баллов)
+            dlc_keywords = ['dlc', 'season pass', 'expansion', 'add-on', 'downloadable content']
+            for keyword in dlc_keywords:
+                if keyword in title:
+                    penalty += 15
+                    break
+            
+            # Штраф за очень старые игры (примерно по году в названии)
+            old_years = ['2010', '2011', '2012', '2013', '2014', '2015']
+            for year in old_years:
+                if year in title:
+                    penalty += 10
+                    break
+            
+            # Финальный рейтинг
+            final_score = discount_score + popularity_score + price_score + bonus_score - penalty
+            
+            # Нормализуем в диапазон 0-200
+            final_score = max(0, min(final_score, 200))
+            
+            logger.debug(f"Game score for '{deal.get('title', '')}': {final_score} "
+                        f"(discount: {discount_score}, popularity: {popularity_score}, "
+                        f"price: {price_score}, bonus: {bonus_score}, penalty: {penalty})")
+            
+            return final_score
+            
+        except Exception as e:
+            logger.error(f"Error calculating game score: {e}")
+            return deal.get('discount', 0)  # Fallback к старому алгоритму
+
+    async def test_weekly_digest_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда для тестирования еженедельного дайджеста (только для администратора)"""
+        user_id = update.effective_user.id
+        language = self.db.get_user_language(user_id)
+        
+        # Проверяем, является ли пользователь администратором (можно добавить список админов)
+        admin_ids = [user_id]  # Временно делаем пользователя админом для тестирования
+        
+        if user_id not in admin_ids:
+            await update.message.reply_text(get_text(language, 'admin_only'))
+            return
+        
+        try:
+            weekly_top = self.db.get_weekly_top_games()
+            
+            if not weekly_top:
+                message = get_text(language, 'digest_test_title') + "\n\n" + get_text(language, 'no_digest_data')
+            else:
+                message = get_text(language, 'digest_test_title') + "\n\n"
+                message += get_text(language, 'digest_data_found', count=len(weekly_top)) + "\n\n"
+                
+                for i, game in enumerate(weekly_top[:10], 1):
+                    if language == 'ru':
+                        message += f"{i}. <b>{game['title']}</b> - {game['discount']}% (-{game['price']}₽)\n"
+                    else:
+                        message += f"{i}. <b>{game['title']}</b> - {game['discount']}% (${game['price']})\n"
+            
+            await update.message.reply_text(message, parse_mode='HTML')
+            
+        except Exception as e:
+            logger.error(f"Error in test digest command: {e}")
+            await update.message.reply_text(get_text(language, 'digest_error'))
+
+    async def admin_send_digest_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда для принудительной отправки еженедельного дайджеста (только для администратора)"""
+        user_id = update.effective_user.id
+        language = self.db.get_user_language(user_id)
+        
+        # Проверяем, является ли пользователь администратором
+        admin_ids = [user_id]  # Временно делаем пользователя админом для тестирования
+        
+        if user_id not in admin_ids:
+            await update.message.reply_text(get_text(language, 'admin_only'))
+            return
+        
+        try:
+            await update.message.reply_text(get_text(language, 'sending_digest'))
+            await self.send_weekly_digest_to_all()
+            await update.message.reply_text(get_text(language, 'digest_sent'))
+                
+        except Exception as e:
+            logger.error(f"Error in admin send digest command: {e}")
+            await update.message.reply_text(get_text(language, 'digest_send_error'))
 
     def split_message(self, message, max_length):
         """Разбивает длинное сообщение на части"""
@@ -876,15 +1201,31 @@ class SteamDiscountBot:
         """Обработчик команды /wishlist - анализ Steam Wishlist"""
         user_id = update.effective_user.id
         user = update.effective_user
+        language = self.db.get_user_language(user_id)
         self.db.add_user(user_id, user.username, user.first_name, user.last_name)
         
         # Проверяем, есть ли аргументы команды (ссылка на профиль)
         if context.args:
             profile_url = ' '.join(context.args)
-            await self._process_wishlist(update, profile_url)
+            await self._process_wishlist(update, profile_url, language)
         else:
             # Запрашиваем ссылку на профиль
-            message = """
+            if language == 'en':
+                message = """
+💝 <b>Steam Wishlist Analysis</b>
+
+Send a link to your <b>public</b> Steam profile to check discounts on games from your wishlist.
+
+📝 <b>Example links:</b>
+• https://steamcommunity.com/id/your_username
+• https://steamcommunity.com/profiles/76561198XXXXXXXXX
+
+⚠️ <b>Important:</b> Profile must be public and wishlist must be open for viewing.
+
+🔗 Just send your Steam profile link to get started!
+                """
+            else:
+                message = """
 💝 <b>Анализ Steam Wishlist</b>
 
 Отправьте ссылку на ваш <b>публичный</b> Steam-профиль для проверки скидок на игры из списка желаемого.
@@ -895,20 +1236,19 @@ class SteamDiscountBot:
 
 ⚠️ <b>Важно:</b> Профиль должен быть публичным, а список желаемого - открытым для просмотра.
 
-💡 <b>Как использовать:</b>
-Отправьте: /wishlist https://steamcommunity.com/id/ваш_ник
-            """
+🔗 Просто отправьте ссылку на ваш Steam-профиль!
+                """
             
             # Сохраняем состояние ожидания ссылки
             self.set_user_state(user_id, 'waiting_for_wishlist_url')
             
             await update.message.reply_text(message, parse_mode='HTML')
     
-    async def _process_wishlist(self, update: Update, profile_url: str):
+    async def _process_wishlist(self, update: Update, profile_url: str, language: str = 'ru'):
         """Обрабатывает анализ wishlist"""
         user_id = update.effective_user.id
         
-        await update.message.reply_text("🔍 Анализирую ваш Steam Wishlist... Это может занять некоторое время.")
+        await update.message.reply_text(get_text(language, 'analyzing_wishlist'))
         
         try:
             # Очищаем состояние
@@ -916,13 +1256,21 @@ class SteamDiscountBot:
             
             # Проверяем валидность URL
             if not ('steamcommunity.com/id/' in profile_url or 'steamcommunity.com/profiles/' in profile_url):
-                await update.message.reply_text(
-                    "❌ <b>Неверная ссылка на профиль</b>\n\n"
-                    "Отправьте ссылку в одном из форматов:\n"
-                    "• https://steamcommunity.com/id/ваш_ник\n"
-                    "• https://steamcommunity.com/profiles/76561198XXXXXXXXX",
-                    parse_mode='HTML'
-                )
+                if language == 'en':
+                    error_msg = (
+                        "❌ <b>Invalid profile link</b>\n\n"
+                        "Send a link in one of the formats:\n"
+                        "• https://steamcommunity.com/id/your_username\n"
+                        "• https://steamcommunity.com/profiles/76561198XXXXXXXXX"
+                    )
+                else:
+                    error_msg = (
+                        "❌ <b>Неверная ссылка на профиль</b>\n\n"
+                        "Отправьте ссылку в одном из форматов:\n"
+                        "• https://steamcommunity.com/id/ваш_ник\n"
+                        "• https://steamcommunity.com/profiles/76561198XXXXXXXXX"
+                    )
+                await update.message.reply_text(error_msg, parse_mode='HTML')
                 return
             
             # Получаем скидки из wishlist
@@ -1029,20 +1377,54 @@ Steam → Профиль → Редактировать профиль → На�
         """Обработчик команды /recommend - AI-рекомендации игр на основе wishlist и библиотеки"""
         user_id = update.effective_user.id
         user = update.effective_user
+        language = self.db.get_user_language(user_id)
         self.db.add_user(user_id, user.username, user.first_name, user.last_name)
         
         # Проверяем, включены ли ИИ-рекомендации
         if not AI_RECOMMENDATIONS_ENABLED:
-            await update.message.reply_text("🤖 ИИ-рекомендации временно отключены.")
+            await update.message.reply_text(get_text(language, 'ai_not_available'))
             return
         
         # Проверяем, указан ли wishlist в команде
         if context.args:
             profile_url = ' '.join(context.args)
-            await self._process_wishlist_ai_recommendations(update, profile_url)
+            await self._process_wishlist_ai_recommendations(update, profile_url, language)
         else:
             # Запрашиваем ссылку на wishlist
-            message = """
+            if language == 'en':
+                message = """
+🤖 <b>AI Game Recommendations based on your Steam Wishlist</b>
+
+Send a link to your Steam profile, and AI will analyze your wishlist and suggest similar games!
+
+📝 <b>Example links:</b>
+• https://steamcommunity.com/profiles/76561198000000000
+• https://steamcommunity.com/id/your_username
+
+🔍 <b>What AI analyzes:</b>
+• Genres of games in your wishlist
+• Your Steam game library
+• Time spent in games
+• Game mechanics and preferences
+• Preferred game style
+• Game mood (dark, fun, etc.)
+
+🎯 <b>What you get:</b>
+• Personalized game recommendations based on real preferences
+• Analysis of your gaming style
+• Compatibility score for each recommendation
+• Price estimates for recommended games
+
+💡 <b>How to use:</b>
+1. Make your Steam profile public
+2. Send the profile link
+3. Wait for AI analysis
+4. Get personalized recommendations!
+
+🔗 Just send your Steam profile link to get started!
+                """
+            else:
+                message = """
 🤖 <b>ИИ-рекомендации игр на основе вашего Steam Wishlist</b>
 
 Отправьте ссылку на ваш Steam профиль, и ИИ проанализирует ваш список желаемого и предложит похожие игры!
@@ -1061,19 +1443,25 @@ Steam → Профиль → Редактировать профиль → На�
 
 🎯 <b>Что получите:</b>
 • Персональные рекомендации игр на основе реальных предпочтений
-• Анализ ваших игровых предпочтений по библиотеке
-• Объяснение, почему каждая игра вам подойдет
-• Учет времени в играх для более точных советов
+• Анализ вашего игрового стиля
+• Оценка совместимости для каждой рекомендации
+• Примерные цены на рекомендуемые игры
 
-💡 <i>Убедитесь, что ваши wishlist и библиотека игр публичные!</i>
-            """
+💡 <b>Как использовать:</b>
+1. Сделайте ваш Steam профиль публичным
+2. Отправьте ссылку на профиль
+3. Дождитесь анализа ИИ
+4. Получите персональные рекомендации!
+
+🔗 Просто отправьте ссылку на ваш Steam профиль для начала!
+                """
             
             # Сохраняем состояние ожидания wishlist
             self.set_user_state(user_id, 'waiting_for_wishlist_ai')
             
             await update.message.reply_text(message, parse_mode='HTML')
     
-    async def _process_wishlist_ai_recommendations(self, update: Update, profile_url: str):
+    async def _process_wishlist_ai_recommendations(self, update: Update, profile_url: str, language: str = 'ru'):
         """Обрабатывает ИИ-рекомендации на основе wishlist и библиотеки"""
         user_id = update.effective_user.id
         
@@ -1081,7 +1469,8 @@ Steam → Профиль → Редактировать профиль → На�
         self.clear_user_state(user_id)
         
         # Показываем индикатор загрузки
-        loading_message = await update.message.reply_text("🤖 Загружаю ваш wishlist и библиотеку игр для анализа... Это может занять 2-3 минуты.")
+        loading_text = get_text(language, 'generating_recommendations') if language == 'en' else '🤖 Загружаю ваш wishlist и библиотеку игр для анализа... Это может занять 2-3 минуты.'
+        loading_message = await update.message.reply_text(loading_text)
         
         try:
             # Получаем данные wishlist
@@ -1139,7 +1528,8 @@ Steam → Профиль → Редактировать профиль → На�
                 wishlist_games, 
                 owned_games,
                 OPENROUTER_API_KEY, 
-                AI_MAX_RECOMMENDATIONS
+                AI_MAX_RECOMMENDATIONS,
+                language
             )
             
             if not ai_result['success']:
@@ -1345,6 +1735,7 @@ Steam → Профиль → Редактировать профиль → На�
             user = update.effective_user
             user_id = user.id
             username = user.username or user.first_name or str(user_id)
+            language = self.db.get_user_language(user_id)
             
             # Добавляем/обновляем пользователя в БД
             self.db.add_user(user_id, user.username, user.first_name, user.last_name)
@@ -1355,27 +1746,21 @@ Steam → Профиль → Редактировать профиль → На�
                 # Показываем меню выбора типа отзыва
                 keyboard = [
                     [
-                        InlineKeyboardButton("🐛 Сообщить о баге", callback_data="feedback_bug"),
-                        InlineKeyboardButton("💡 Предложить идею", callback_data="feedback_feature")
+                        InlineKeyboardButton(get_text(language, 'report_bug'), callback_data="feedback_bug"),
+                        InlineKeyboardButton(get_text(language, 'suggest_feature'), callback_data="feedback_feature")
                     ],
                     [
-                        InlineKeyboardButton("❤️ Оставить отзыв", callback_data="feedback_review"),
-                        InlineKeyboardButton("📊 Статистика", callback_data="feedback_stats")
+                        InlineKeyboardButton(get_text(language, 'leave_review'), callback_data="feedback_review"),
                     ]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
+                message = get_text(language, 'feedback_menu_title')
+                
                 await update.message.reply_text(
-                    "💬 **Отзывы и предложения**\n\n"
-                    "Выберите тип сообщения:\n\n"
-                    "🐛 **Баг** - сообщить о проблеме\n"
-                    "💡 **Идея** - предложить улучшение\n"
-                    "❤️ **Отзыв** - поделиться мнением о боте\n"
-                    "📊 **Статистика** - посмотреть общую статистику\n\n"
-                    "_Или отправьте отзыв сразу:_\n"
-                    "`/feedback Ваше сообщение`",
+                    message,
                     reply_markup=reply_markup,
-                    parse_mode='Markdown'
+                    parse_mode='HTML'
                 )
                 return
                 
