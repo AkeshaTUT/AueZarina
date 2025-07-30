@@ -489,21 +489,30 @@ class SteamDiscountBot:
         # Отправляем подтверждение и приветственное сообщение
         await query.edit_message_text(get_text(language, 'language_changed'))
         
-        # Создаем фиктивное обновление для отправки приветственного сообщения
-        from telegram import Message, Chat, User
-        fake_message = Message(
-            message_id=0,
-            date=None,
-            chat=query.message.chat,
-            from_user=query.from_user
-        )
-        fake_update = type('Update', (), {
-            'message': fake_message,
-            'effective_user': query.from_user
-        })()
+        # Отправляем полный список команд как в /help
+        help_message = get_text(language, 'all_commands') + "\n\n"
         
-        # Отправляем приветственное сообщение на выбранном языке
-        await self.show_welcome_message(fake_update, language)
+        # Основные команды
+        help_message += get_text(language, 'basic_title') + "\n"
+        help_message += f"{get_text(language, 'start_desc')}\n"
+        help_message += f"{get_text(language, 'subscribe_desc')}\n"
+        help_message += f"{get_text(language, 'unsubscribe_desc')}\n"
+        help_message += f"{get_text(language, 'deals_desc')}\n"
+        help_message += f"{get_text(language, 'free_desc')}\n"
+        help_message += f"{get_text(language, 'genres_desc')}\n"
+        help_message += f"{get_text(language, 'discount_desc')}\n"
+        help_message += f"{get_text(language, 'settings_desc')}\n"
+        help_message += f"{get_text(language, 'weeklydigest_desc')}\n"
+        help_message += f"{get_text(language, 'feedback_desc')}\n\n"
+        
+        # Новые возможности
+        help_message += get_text(language, 'new_title') + "\n"
+        help_message += f"{get_text(language, 'wishlist_desc')}\n"
+        help_message += f"{get_text(language, 'recommend_desc')}\n\n"
+        
+        help_message += get_text(language, 'help_footer')
+        
+        await query.message.reply_text(help_message, parse_mode='HTML')
     
     async def handle_change_language_callback(self, query, user_id: int):
         """Обработка callback для смены языка из настроек"""
