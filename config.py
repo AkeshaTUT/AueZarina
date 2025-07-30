@@ -1,9 +1,12 @@
 # Конфигурация Telegram бота для Steam скидок
 import os
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env файла
+load_dotenv()
 
 # Токен бота (получите от @BotFather в Telegram)
-# В Replit добавьте в Secrets: TELEGRAM_BOT_TOKEN
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
 # Настройки скидок
 MIN_DISCOUNT = 30  # Минимальная скидка в процентах
