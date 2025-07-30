@@ -12,6 +12,7 @@ BOT_DIR="/home/$USER_NAME/AueZarina"
 VENV_PATH="$BOT_DIR/venv"
 PYTHON_PATH="$VENV_PATH/bin/python"
 MAIN_FILE="$BOT_DIR/main.py"
+START_SCRIPT="$BOT_DIR/start_bot.sh"
 SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
 
 # Цвета для вывода
@@ -47,6 +48,23 @@ check_sudo() {
     fi
 }
 
+# Создание скрипта запуска
+create_start_script() {
+    print_blue "Создание скрипта запуска..."
+    
+    cat > $START_SCRIPT << EOF
+#!/bin/bash
+cd $BOT_DIR
+source $VENV_PATH/bin/activate
+exec python main.py
+EOF
+
+    # Сделать исполняемым
+    chmod +x $START_SCRIPT
+    chown $USER_NAME:$USER_NAME $START_SCRIPT
+    print_status "Скрипт запуска создан: $START_SCRIPT"
+}
+
 # Создание systemd сервиса
 create_service() {
     print_blue "Создание systemd сервиса..."
@@ -62,11 +80,7 @@ Type=simple
 User=$USER_NAME
 Group=$USER_NAME
 WorkingDirectory=$BOT_DIR
-Environment=PATH=$VENV_PATH/bin:/usr/bin:/usr/local/bin
-Environment=PYTHONPATH=$BOT_DIR
-ExecStart=$PYTHON_PATH $MAIN_FILE
-ExecReload=/bin/kill -HUP \$MAINPID
-KillMode=mixed
+ExecStart=$START_SCRIPT
 Restart=always
 RestartSec=10
 TimeoutStopSec=30
@@ -79,13 +93,6 @@ CPUQuota=50%
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=zarinai-bot
-
-# Безопасность
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=$BOT_DIR
 
 [Install]
 WantedBy=multi-user.target
@@ -143,6 +150,9 @@ install_service() {
         print_error "Не удалось создать виртуальное окружение: $PYTHON_PATH"
         exit 1
     fi
+    
+    # Создание скрипта запуска
+    create_start_script
     
     # Создание сервиса
     create_service
@@ -354,12 +364,35 @@ setup_venv() {
     if [[ -f "$PYTHON_PATH" ]]; then
         print_status "✅ Виртуальное окружение настроено успешно!"
         print_status "🐍 Python: $($PYTHON_PATH --version)"
+        
+        # Создание скрипта запуска
+        create_start_script
+        
         print_warning "⚠️  ВАЖНО: Отредактируйте файл .env и добавьте BOT_TOKEN!"
         echo "Выполните: nano $BOT_DIR/.env"
     else
         print_error "❌ Ошибка при создании виртуального окружения"
         exit 1
     fi
+}
+
+# Тестирование бота
+test_bot() {
+    print_blue "Тестирование бота..."
+    
+    if [[ ! -f "$START_SCRIPT" ]]; then
+        print_warning "Скрипт запуска не найден. Создание..."
+        create_start_script
+    fi
+    
+    if [[ ! -f "$BOT_DIR/.env" ]]; then
+        print_error ".env файл не найден! Создайте его:"
+        echo "cp env.example .env && nano .env"
+        exit 1
+    fi
+    
+    print_blue "Запуск бота в тестовом режиме (Ctrl+C для остановки)..."
+    sudo -u $USER_NAME $START_SCRIPT
 }
 
 # Показать информацию о системе
@@ -398,6 +431,7 @@ show_usage() {
     disable         Отключить автозапуск
     
     status          Показать статус бота
+    test            Тестировать бота вручную
     update          Обновить бота из GitHub
     
 КОМАНДЫ ЛОГОВ:
@@ -415,6 +449,7 @@ show_usage() {
     sudo $0 install          # Установить бота как сервис
     sudo $0 setup-venv       # Настроить виртуальное окружение
     sudo $0 status           # Проверить статус
+    sudo $0 test             # Протестировать бота
     sudo $0 logs tail        # Смотреть логи в реальном времени
     sudo $0 restart          # Перезапустить бота
     sudo $0 update           # Обновить бота
@@ -422,6 +457,7 @@ show_usage() {
 ФАЙЛЫ:
     Сервис: $SERVICE_FILE
     Главный файл: $MAIN_FILE
+    Скрипт запуска: $START_SCRIPT
     Python: $PYTHON_PATH
 
 🚀 После установки бот будет работать 24/7 и автоматически запускаться при перезагрузке!
@@ -449,6 +485,10 @@ main() {
             ;;
         status)
             show_status
+            ;;
+        test)
+            check_sudo
+            test_bot
             ;;
         update)
             check_sudo
