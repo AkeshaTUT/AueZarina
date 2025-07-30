@@ -1283,7 +1283,19 @@ Send a link to your <b>public</b> Steam profile to check discounts on games from
                 return
             
             # Получаем скидки из wishlist
+            logger.info(f"🔍 Starting wishlist analysis for URL: {profile_url}")
             discounted_games = await get_wishlist_discounts(profile_url)
+            logger.info(f"📊 Wishlist analysis result: found {len(discounted_games) if discounted_games else 0} discounted games")
+            
+            if discounted_games:
+                # Логируем информацию о найденных играх
+                for i, game in enumerate(discounted_games[:5], 1):
+                    name = game.get('name', 'Unknown')
+                    discount = game.get('discount_percent', 0)
+                    logger.info(f"  {i}. {name} - discount: {discount}%")
+                
+                if len(discounted_games) > 5:
+                    logger.info(f"  ... and {len(discounted_games) - 5} more games")
             
             if not discounted_games:
                 message = """
@@ -1320,10 +1332,18 @@ Steam → Профиль → Редактировать профиль → На�
                 await update.message.reply_text(message, parse_mode='HTML')
                 return
             
-            # Формируем сообщение с результатами
-            message = f"💝 <b>Скидки в вашем Steam Wishlist ({len(discounted_games)} игр):</b>\n\n"
+            # Формируем сообщение с результатами  
+            total_games = len(discounted_games)
+            games_to_show = min(10, total_games)  # Показываем до 10 игр за раз
             
-            for game in discounted_games[:15]:  # Показываем до 15 игр
+            message = f"💝 <b>Скидки в вашем Steam Wishlist:</b>\n"
+            message += f"🎯 Найдено <b>{total_games}</b> игр со скидками\n"
+            message += f"📋 Показываю топ <b>{games_to_show}</b>:\n\n"
+            
+            # Сортируем игры по размеру скидки (сначала самые большие)
+            sorted_games = sorted(discounted_games, key=lambda x: x.get('discount_percent', 0), reverse=True)
+            
+            for i, game in enumerate(sorted_games[:games_to_show], 1):
                 discount = game.get('discount_percent', 0)
                 name = game.get('name', 'Неизвестная игра')
                 final_price = game.get('final_formatted', '')
@@ -1340,29 +1360,30 @@ Steam → Профиль → Редактировать профиль → На�
                 else:
                     emoji = "💰"
                 
-                message += f"{emoji} <b>{name}</b>\n"
-                message += f"💸 Скидка: <b>-{discount}%</b>\n"
+                # Сокращаем название если слишком длинное
+                if len(name) > 35:
+                    name = name[:32] + "..."
+                
+                message += f"{i}. {emoji} <b>{name}</b>\n"
+                message += f"   💸 Скидка: <b>-{discount}%</b>"
                 
                 if initial_price and final_price:
-                    message += f"💰 <s>{initial_price}</s> → <b>{final_price}</b>\n"
+                    message += f" | 💰 <s>{initial_price}</s> → <b>{final_price}</b>"
                 
-                if url:
-                    message += f"🔗 <a href='{url}'>Купить в Steam</a>\n"
+                message += "\n"
+                
+                if url and i <= 5:  # Ссылки только для топ-5
+                    message += f"   🔗 <a href='{url}'>Купить в Steam</a>\n"
                 
                 message += "\n"
             
-            if len(discounted_games) > 15:
-                message += f"💡 <i>И еще {len(discounted_games) - 15} игр со скидками...</i>\n"
+            if total_games > games_to_show:
+                remaining = total_games - games_to_show
+                message += f"💡 <i>Еще {remaining} игр со скидками в вашем wishlist!</i>\n"
             
             message += "\n🎯 <i>Успейте купить до окончания акций!</i>"
             
-            # Разбиваем длинное сообщение
-            if len(message) > 4000:
-                chunks = self.split_message(message, 4000)
-                for chunk in chunks:
-                    await update.message.reply_text(chunk, parse_mode='HTML', disable_web_page_preview=True)
-            else:
-                await update.message.reply_text(message, parse_mode='HTML', disable_web_page_preview=True)
+            await update.message.reply_text(message, parse_mode='HTML', disable_web_page_preview=True)
                 
         except Exception as e:
             logger.error(f"Error processing wishlist: {e}")
