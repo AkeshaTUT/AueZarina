@@ -12,13 +12,14 @@ import re
 logger = logging.getLogger(__name__)
 
 class GameRecommendationAI:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, language: str = 'ru'):
         """Инициализация ИИ-помощника для рекомендаций игр"""
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=api_key,
         )
         self.model = "deepseek/deepseek-chat-v3-0324:free"
+        self.language = language
     
     async def get_game_recommendations(self, wishlist_games: List[Dict], owned_games: List[Dict] = None, limit: int = 10) -> List[Dict]:
         """
@@ -87,6 +88,14 @@ class GameRecommendationAI:
     def _create_comprehensive_recommendation_prompt(self, wishlist_names: List[str], owned_names: List[str], owned_playtime: List[tuple], limit: int) -> str:
         """Создает комплексный промпт для ИИ-рекомендаций на основе wishlist и библиотеки"""
         
+        # Выбираем язык промпта
+        if self.language == 'en':
+            return self._create_english_comprehensive_prompt(wishlist_names, owned_names, owned_playtime, limit)
+        else:
+            return self._create_russian_comprehensive_prompt(wishlist_names, owned_names, owned_playtime, limit)
+    
+    def _create_russian_comprehensive_prompt(self, wishlist_names: List[str], owned_names: List[str], owned_playtime: List[tuple], limit: int) -> str:
+        """Создает русский промпт для ИИ-рекомендаций"""
         # Формируем wishlist
         wishlist_section = ""
         if wishlist_names:
@@ -159,6 +168,83 @@ WISHLIST ПОЛЬЗОВАТЕЛЯ ({len(wishlist_names)} игр):
 }}
 
 ВАЖНО: Отвечай ТОЛЬКО JSON, без дополнительного текста!"""
+        
+        return prompt
+    
+    def _create_english_comprehensive_prompt(self, wishlist_names: List[str], owned_names: List[str], owned_playtime: List[tuple], limit: int) -> str:
+        """Создает английский промпт для ИИ-рекомендаций"""
+        # Form wishlist section
+        wishlist_section = ""
+        if wishlist_names:
+            wishlist_list = "\n".join([f"- {name}" for name in wishlist_names])
+            wishlist_section = f"""
+USER'S WISHLIST ({len(wishlist_names)} games):
+{wishlist_list}
+"""
+        
+        # Form library section
+        library_section = ""
+        if owned_names:
+            library_list = "\n".join([f"- {name}" for name in owned_names])
+            library_section = f"""
+PLAYER'S LIBRARY ({len(owned_names)} games):
+{library_list}
+"""
+        
+        # Top games by playtime
+        playtime_section = ""
+        if owned_playtime:
+            playtime_list = "\n".join([
+                f"- {name}: {playtime//60:.1f} hours" 
+                for name, playtime in owned_playtime[:8] if playtime > 0
+            ])
+            if playtime_list:
+                playtime_section = f"""
+FAVORITE GAMES (by playtime):
+{playtime_list}
+"""
+        
+        prompt = f"""
+You are a video game expert and Steam specialist. Analyze player data and recommend {limit} games.
+
+{wishlist_section}{library_section}{playtime_section}
+
+TASK:
+1. Analyze gaming preferences based on ALL data:
+   - Wishlist shows future interests
+   - Library shows purchased games
+   - Playtime shows REAL preferences
+2. Identify favorite genres, mechanics, game styles
+3. Recommend {limit} games that are NOT in wishlist or library
+4. Consider modern and popular Steam games
+
+FOR EACH RECOMMENDATION SPECIFY:
+- Game title
+- Brief description (1-2 sentences)
+- Why it fits (connection to player's games)
+- Estimated Steam price
+- Compatibility score (85-95%)
+
+RESPONSE FORMAT (strict JSON):
+{{
+  "analysis": {{
+    "top_genres": ["genre1", "genre2", "genre3"],
+    "preferred_mechanics": ["mechanic1", "mechanic2"],
+    "gaming_style": "player style description",
+    "analysis_summary": "brief preference analysis"
+  }},
+  "recommendations": [
+    {{
+      "name": "Game Title",
+      "description": "Game description",
+      "reason": "Why it fits the player",
+      "estimated_price": "price in USD",
+      "similarity_score": 90
+    }}
+  ]
+}}
+
+IMPORTANT: Reply ONLY with JSON, no additional text!"""
         
         return prompt
     
@@ -466,7 +552,7 @@ WISHLIST ПОЛЬЗОВАТЕЛЯ:
             return {}
 
 # Функция для интеграции с основным ботом
-async def get_ai_game_recommendations(wishlist_games: List[Dict], owned_games: List[Dict], api_key: str, limit: int = 8) -> Dict:
+async def get_ai_game_recommendations(wishlist_games: List[Dict], owned_games: List[Dict], api_key: str, limit: int = 8, language: str = 'ru') -> Dict:
     """
     Получает ИИ-рекомендации игр на основе wishlist и библиотеки
     
@@ -475,12 +561,13 @@ async def get_ai_game_recommendations(wishlist_games: List[Dict], owned_games: L
         owned_games: Список игр из библиотеки
         api_key: API ключ для OpenRouter
         limit: Количество рекомендаций
+        language: Язык пользователя ('ru' или 'en')
         
     Returns:
         Словарь с рекомендациями и анализом
     """
     try:
-        ai = GameRecommendationAI(api_key)
+        ai = GameRecommendationAI(api_key, language)
         
         # Получаем рекомендации на основе обеих источников
         recommendations = await ai.get_game_recommendations(wishlist_games, owned_games, limit)
