@@ -104,9 +104,43 @@ install_service() {
         exit 1
     fi
     
+    # Создание виртуального окружения если не существует
     if [[ ! -f "$PYTHON_PATH" ]]; then
-        print_error "Python в виртуальном окружении не найден: $PYTHON_PATH"
-        print_warning "Создайте виртуальное окружение: python3 -m venv $VENV_PATH"
+        print_warning "Виртуальное окружение не найдено. Создание..."
+        
+        # Проверка наличия python3
+        if ! command -v python3 &> /dev/null; then
+            print_error "Python3 не установлен. Установите: sudo apt update && sudo apt install python3 python3-venv python3-pip"
+            exit 1
+        fi
+        
+        # Создание виртуального окружения от имени пользователя
+        sudo -u $USER_NAME python3 -m venv $VENV_PATH
+        print_status "Виртуальное окружение создано"
+        
+        # Обновление pip
+        sudo -u $USER_NAME $VENV_PATH/bin/pip install --upgrade pip
+        print_status "pip обновлен"
+        
+        # Установка зависимостей
+        if [[ -f "$BOT_DIR/requirements.txt" ]]; then
+            print_blue "Установка зависимостей..."
+            sudo -u $USER_NAME $VENV_PATH/bin/pip install -r $BOT_DIR/requirements.txt
+            print_status "Зависимости установлены"
+        fi
+        
+        # Создание .env файла если не существует
+        if [[ ! -f "$BOT_DIR/.env" ]] && [[ -f "$BOT_DIR/env.example" ]]; then
+            print_blue "Создание .env файла..."
+            sudo -u $USER_NAME cp $BOT_DIR/env.example $BOT_DIR/.env
+            print_warning "⚠️  ВАЖНО: Отредактируйте файл .env и добавьте BOT_TOKEN!"
+            print_warning "Выполните: nano $BOT_DIR/.env"
+        fi
+    fi
+    
+    # Финальная проверка
+    if [[ ! -f "$PYTHON_PATH" ]]; then
+        print_error "Не удалось создать виртуальное окружение: $PYTHON_PATH"
         exit 1
     fi
     
@@ -273,6 +307,61 @@ uninstall_service() {
     fi
 }
 
+# Настройка виртуального окружения
+setup_venv() {
+    print_blue "Настройка виртуального окружения..."
+    
+    # Проверка наличия python3
+    if ! command -v python3 &> /dev/null; then
+        print_error "Python3 не установлен. Установите:"
+        echo "sudo apt update && sudo apt install python3 python3-venv python3-pip"
+        exit 1
+    fi
+    
+    # Удаление старого окружения если существует
+    if [[ -d "$VENV_PATH" ]]; then
+        print_warning "Удаление старого виртуального окружения..."
+        sudo -u $USER_NAME rm -rf $VENV_PATH
+    fi
+    
+    # Создание нового виртуального окружения
+    print_blue "Создание виртуального окружения..."
+    sudo -u $USER_NAME python3 -m venv $VENV_PATH
+    print_status "Виртуальное окружение создано"
+    
+    # Обновление pip
+    print_blue "Обновление pip..."
+    sudo -u $USER_NAME $VENV_PATH/bin/pip install --upgrade pip
+    print_status "pip обновлен"
+    
+    # Установка зависимостей
+    if [[ -f "$BOT_DIR/requirements.txt" ]]; then
+        print_blue "Установка зависимостей..."
+        sudo -u $USER_NAME $VENV_PATH/bin/pip install -r $BOT_DIR/requirements.txt
+        print_status "Зависимости установлены"
+    else
+        print_warning "Файл requirements.txt не найден"
+    fi
+    
+    # Создание .env файла
+    if [[ ! -f "$BOT_DIR/.env" ]] && [[ -f "$BOT_DIR/env.example" ]]; then
+        print_blue "Создание .env файла..."
+        sudo -u $USER_NAME cp $BOT_DIR/env.example $BOT_DIR/.env
+        print_status ".env файл создан"
+    fi
+    
+    # Проверка установки
+    if [[ -f "$PYTHON_PATH" ]]; then
+        print_status "✅ Виртуальное окружение настроено успешно!"
+        print_status "🐍 Python: $($PYTHON_PATH --version)"
+        print_warning "⚠️  ВАЖНО: Отредактируйте файл .env и добавьте BOT_TOKEN!"
+        echo "Выполните: nano $BOT_DIR/.env"
+    else
+        print_error "❌ Ошибка при создании виртуального окружения"
+        exit 1
+    fi
+}
+
 # Показать информацию о системе
 show_system_info() {
     print_blue "Информация о системе:"
@@ -297,6 +386,7 @@ show_usage() {
 
 КОМАНДЫ УПРАВЛЕНИЯ:
     install         Установить бота как системный сервис
+    setup-venv      Настроить виртуальное окружение
     uninstall       Удалить сервис
     
     start           Запустить бота
@@ -323,6 +413,7 @@ show_usage() {
 
 ПРИМЕРЫ:
     sudo $0 install          # Установить бота как сервис
+    sudo $0 setup-venv       # Настроить виртуальное окружение
     sudo $0 status           # Проверить статус
     sudo $0 logs tail        # Смотреть логи в реальном времени
     sudo $0 restart          # Перезапустить бота
@@ -343,6 +434,10 @@ main() {
         install)
             check_sudo
             install_service
+            ;;
+        setup-venv)
+            check_sudo
+            setup_venv
             ;;
         uninstall)
             check_sudo
